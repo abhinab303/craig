@@ -11,7 +11,8 @@ import torch.optim
 import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-import resnet_icml as resnet
+# import resnet_icml as resnet
+import resnet
 
 from torch.utils.data import Dataset, DataLoader
 import util
