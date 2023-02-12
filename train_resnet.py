@@ -24,6 +24,7 @@ from GradualWarmupScheduler import *
 simplefilter(action='ignore', category=FutureWarning)
 np.seterr(all='ignore')
 
+CUDA_VISIBLE_DEVICES = 0
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   # see issue #152
 
 model_names = sorted(name for name in resnet.__dict__
@@ -94,7 +95,9 @@ def main(subset_size=.1, greedy=0):
 
     global args, best_prec1
     args = parser.parse_args()
-    os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
+    # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
+    os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+    CUDA_VISIBLE_DEVICES = 0
 
     print(f'--------- subset_size: {subset_size}, method: {args.ig}, moment: {args.momentum}, '
           f'lr_schedule: {args.lr_schedule}, greedy: {greedy}, stoch: {args.st_grd}, rs: {args.random_subset_size} ---------------')
