@@ -10,6 +10,8 @@ import math
 from scipy import spatial
 import matplotlib.pyplot as plt
 
+import pdb
+
 
 class FacilityLocation:
 
@@ -72,7 +74,7 @@ def lazy_greedy_heap(F, V, B):
     vals = []
 
     order = []
-    heapq._heapify_max(order)
+    heapq._heapify_max(order)           # gives the max value when popping, max value at root of heap
     [_heappush_max(order, (F.inc(sset, index), index)) for index in V]
 
     while order and len(sset) < B:
@@ -80,6 +82,7 @@ def lazy_greedy_heap(F, V, B):
         improv = F.inc(sset, el[1])
 
         # check for uniques elements
+
         if improv >= 0:
             if not order:
                 curVal = F.add(sset, el[1])
@@ -94,6 +97,8 @@ def lazy_greedy_heap(F, V, B):
                 else:
                     _heappush_max(order, (improv, el[1]))
                 _heappush_max(order, top)
+
+    # pdb.set_trace()
 
     return sset, vals
 
