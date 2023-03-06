@@ -304,6 +304,8 @@ def main(subset_size=.1, greedy=0):
         loss_error_list_all = []
         loss_error_list_sub = []
 
+        gradient_storage = []
+
         for epoch in range(args.start_epoch, args.epochs):
 
             # train for one epoch
@@ -454,52 +456,55 @@ def main(subset_size=.1, greedy=0):
             gp, gt, gl = get_gradients(indexed_loader, model, train_criterion)
 
             first_gradient_all = gp - np.eye(CLASS_NUM)[gt]
-            first_gradient_ss = first_gradient_all[subset]
-
-            first_gradient_ss_wt = first_gradient_ss * np.tile(subset_weight, (CLASS_NUM, 1)).T
-            first_gradient_ss_wt_scaled = first_gradient_ss * np.tile(scaled_weight, (CLASS_NUM, 1)).T
-
-            first_gradient_error = first_gradient_all.sum(axis=0) - first_gradient_ss.sum(axis=0)
-            first_gradient_error_wt = first_gradient_all.sum(axis=0) - first_gradient_ss_wt.sum(axis=0)
-            first_gradient_error_wt_scaled = first_gradient_all.sum(axis=0) - first_gradient_ss_wt_scaled.sum(axis=0)
-
-            first_gradient_norm = np.linalg.norm(first_gradient_error)
-            first_gradient_norm_wt = np.linalg.norm(first_gradient_error_wt)
-            first_gradient_norm_wt_scaled = np.linalg.norm(first_gradient_error_wt_scaled)
-            first_gradient_norm_wt_rel = np.linalg.norm(first_gradient_error_wt) / np.linalg.norm(first_gradient_all.sum(axis=0))
+            first_gradient_all = first_gradient_all.sum(axis=0)
+            # first_gradient_ss = first_gradient_all[subset]
+            #
+            # first_gradient_ss_wt = first_gradient_ss * np.tile(subset_weight, (CLASS_NUM, 1)).T
+            # first_gradient_ss_wt_scaled = first_gradient_ss * np.tile(scaled_weight, (CLASS_NUM, 1)).T
+            #
+            # first_gradient_error = first_gradient_all.sum(axis=0) - first_gradient_ss.sum(axis=0)
+            # first_gradient_error_wt = first_gradient_all.sum(axis=0) - first_gradient_ss_wt.sum(axis=0)
+            # first_gradient_error_wt_scaled = first_gradient_all.sum(axis=0) - first_gradient_ss_wt_scaled.sum(axis=0)
+            #
+            # first_gradient_norm = np.linalg.norm(first_gradient_error)
+            # first_gradient_norm_wt = np.linalg.norm(first_gradient_error_wt)
+            # first_gradient_norm_wt_scaled = np.linalg.norm(first_gradient_error_wt_scaled)
+            # first_gradient_norm_wt_rel = np.linalg.norm(first_gradient_error_wt) / np.linalg.norm(first_gradient_all.sum(axis=0))
             first_gradient_norm_all = np.linalg.norm(first_gradient_all.sum(axis=0))
-            first_gradient_norm_sub = np.linalg.norm(first_gradient_ss_wt.sum(axis=0))
+            # first_gradient_norm_sub = np.linalg.norm(first_gradient_ss_wt.sum(axis=0))
 
 
-            loss_all = gl
-            loss_ss = gl[subset]
-            loss_ss_wt = loss_ss * subset_weight
-            loss_ss_wt_scaled = loss_ss * scaled_weight
-
-            loss_error = gl.sum() - loss_ss.sum()
-            loss_error_wt = gl.sum() - loss_ss_wt.sum()
-            loss_error_wt_scaled = gl.sum() - loss_ss_wt_scaled.sum()
-            loss_error_wt_rel = loss_error_wt / gl.sum()
-            loss_error_all = gl.sum()
-            loss_error_sub = loss_ss_wt.sum()
-
-            loss_error_norm = np.linalg.norm(loss_error)
-            loss_error_norm_wt = np.linalg.norm(loss_error_wt)
-            loss_error_norm_wt_scaled = np.linalg.norm(loss_error_wt_scaled)
-
-            first_gradient_list.append(first_gradient_norm)
-            first_gradient_list_wt.append(first_gradient_norm_wt)
-            first_gradient_list_wt_scaled.append(first_gradient_norm_wt_scaled)
-            first_gradient_list_wt_rel.append(first_gradient_norm_wt_rel)
+            # loss_all = gl
+            # loss_ss = gl[subset]
+            # loss_ss_wt = loss_ss * subset_weight
+            # loss_ss_wt_scaled = loss_ss * scaled_weight
+            #
+            # loss_error = gl.sum() - loss_ss.sum()
+            # loss_error_wt = gl.sum() - loss_ss_wt.sum()
+            # loss_error_wt_scaled = gl.sum() - loss_ss_wt_scaled.sum()
+            # loss_error_wt_rel = loss_error_wt / gl.sum()
+            # loss_error_all = gl.sum()
+            # loss_error_sub = loss_ss_wt.sum()
+            #
+            # loss_error_norm = np.linalg.norm(loss_error)
+            # loss_error_norm_wt = np.linalg.norm(loss_error_wt)
+            # loss_error_norm_wt_scaled = np.linalg.norm(loss_error_wt_scaled)
+            #
+            # first_gradient_list.append(first_gradient_norm)
+            # first_gradient_list_wt.append(first_gradient_norm_wt)
+            # first_gradient_list_wt_scaled.append(first_gradient_norm_wt_scaled)
+            # first_gradient_list_wt_rel.append(first_gradient_norm_wt_rel)
             first_gradient_list_norm_all.append(first_gradient_norm_all)
-            first_gradient_list_norm_sub.append(first_gradient_norm_sub)
+            # first_gradient_list_norm_sub.append(first_gradient_norm_sub)
+            #
+            # loss_error_list.append(loss_error)
+            # loss_error_list_wt.append(loss_error_wt)
+            # loss_error_list_wt_scaled.append(loss_error_wt_scaled)
+            # loss_error_list_wt_rel.append(loss_error_wt_rel)
+            # loss_error_list_all.append(loss_error_all)
+            # loss_error_list_sub.append(loss_error_sub)
 
-            loss_error_list.append(loss_error)
-            loss_error_list_wt.append(loss_error_wt)
-            loss_error_list_wt_scaled.append(loss_error_wt_scaled)
-            loss_error_list_wt_rel.append(loss_error_wt_rel)
-            loss_error_list_all.append(loss_error_all)
-            loss_error_list_sub.append(loss_error_sub)
+            gradient_storage.append(first_gradient_all)
 
             # pdb.set_trace()
 
@@ -511,30 +516,30 @@ def main(subset_size=.1, greedy=0):
                 "Test Accuracy": test_acc_list,
                 "Train Accuracy": train_acc_list,
 
-                "first_gradient_norm": first_gradient_list,
-                "first_gradient_norm_wt": first_gradient_list_wt,
-                "first_gradient_norm_wt_scaled": first_gradient_list_wt_scaled,
-                "first_gradient_norm_wt_rel": first_gradient_list_wt_rel,
+                # "first_gradient_norm": first_gradient_list,
+                # "first_gradient_norm_wt": first_gradient_list_wt,
+                # "first_gradient_norm_wt_scaled": first_gradient_list_wt_scaled,
+                # "first_gradient_norm_wt_rel": first_gradient_list_wt_rel,
                 "first_gradient_norm_all": first_gradient_list_norm_all,
-                "first_gradient_norm_sub": first_gradient_list_norm_sub,
-
-                "loss_error": loss_error_list,
-                "loss_error_wt": loss_error_list_wt,
-                "loss_error_wt_scaled": loss_error_list_wt_scaled,
-                "loss_error_wt_rel": loss_error_list_wt_rel,
-                "loss_error_all": loss_error_list_all,
-                "loss_error_sub": loss_error_list_sub,
+                # "first_gradient_norm_sub": first_gradient_list_norm_sub,
+                #
+                # "loss_error": loss_error_list,
+                # "loss_error_wt": loss_error_list_wt,
+                # "loss_error_wt_scaled": loss_error_list_wt_scaled,
+                # "loss_error_wt_rel": loss_error_list_wt_rel,
+                # "loss_error_all": loss_error_list_all,
+                # "loss_error_sub": loss_error_list_sub,
             }
 
             # pdb.set_trace()
 
             # pdb.set_trace()
 
-            # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar10_test_0.csv", sep='\t')
+            pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar10_all_data_0.csv", sep='\t')
             # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar100_org_2.csv", sep='\t')
             # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/with_variance_cur7_seed0.csv", sep='\t')
 
-
+            np.savez("/home/aa7514/PycharmProjects/craig/cifar10_all_data_0",all_gradient=gradient_storage)
 
 
     print(np.max(test_acc, 1), np.mean(np.max(test_acc, 1)),

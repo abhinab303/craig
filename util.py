@@ -1,5 +1,6 @@
 import itertools
 import os
+import pdb
 import subprocess
 import time
 import gc
@@ -120,6 +121,8 @@ def similarity(X, metric):
     dists = sklearn.metrics.pairwise_distances(X, metric=metric, n_jobs=1)
     # dists = gdist(X, X, optimize_level=0, output='cpu')
     elapsed = time.time() - start
+
+    # print("Gradient Size: ", X.shape)
 
     if metric == 'cosine':
         S = 1 - dists
@@ -272,23 +275,26 @@ def get_facility_location_submodular_order(S, B, c, smtk=0, no=0, stoch_greedy=0
     order = np.asarray(order, dtype=np.int64)
     sz = np.zeros(B, dtype=np.float64)
     for i in range(N):
+        # pdb.set_trace()
         if weights is None:
             sz[np.argmax(S[i, order])] += 1
         else:
             sz[np.argmax(S[i, order])] += weights[i]
     # print('time (sec) for computing facility location:', greedy_time, flush=True)
     collected = gc.collect()
+    # print("order: ", len(order))
     return order, sz, greedy_time, F_val
 
 
 def faciliy_location_order(c, X, y, metric, num_per_class, smtk, no, stoch_greedy, weights=None):
     class_indices = np.where(y == c)[0]
-    print(c)
-    print(class_indices)
-    print(len(class_indices))
+    # print(c)
+    # print(class_indices)
+    # print(len(class_indices))
     S, S_time = similarity(X[class_indices], metric=metric)
     order, cluster_sz, greedy_time, F_val = get_facility_location_submodular_order(
         S, num_per_class, c, smtk, no, stoch_greedy, weights)
+    # print("class i order: ", len(class_indices[order]))
     return class_indices[order], cluster_sz, greedy_time, S_time
 
 
@@ -301,7 +307,7 @@ def save_all_orders_and_weights(folder, X, metric='l2', stoch_greedy=False, y=No
     # assert np.array_equal(classes, np.arange(C))
     # assert B % C == 0
     class_nums = [sum(y == c) for c in classes]
-    print(class_nums)
+    # print(class_nums)
     class_indices = [np.where(y == c)[0] for c in classes]
 
     tmp_path = '/tmp'
@@ -477,9 +483,13 @@ def get_orders_and_weights(B, X, metric, smtk, no=0, stoch_greedy=0, y=None, wei
     order_mg_all, cluster_sizes_all, greedy_times, similarity_times = zip(*map(
         lambda c: faciliy_location_order(c, X, y, metric, num_per_class[c], smtk, no, stoch_greedy, weights), classes))
 
+    print("from all class: ", len(order_mg_all))
+    # pdb.set_trace()
+
     order_mg, weights_mg = [], []
     if equal_num:
         props = np.rint([len(order_mg_all[i]) for i in range(len(order_mg_all))])
+        # print("from all class props: ", props)
     else:
         # merging imbalanced classes
         class_ratios = np.divide([np.sum(y == i) for i in classes], N)
@@ -495,6 +505,8 @@ def get_orders_and_weights(B, X, metric, smtk, no=0, stoch_greedy=0, y=None, wei
             order_mg = np.append(order_mg, order_mg_all[c][ndx])
             weights_mg = np.append(weights_mg, cluster_sizes_all[c][ndx])
     order_mg = np.array(order_mg, dtype=np.int32)
+
+    # print("last order mg: ", order_mg.shape)
 
     # class_ratios = np.divide([np.sum(y == i) for i in classes], N)
     # weights_mg[y[order_mg] == np.argmax(class_ratios)] /= (np.max(class_ratios) / np.min(class_ratios))

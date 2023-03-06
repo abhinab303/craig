@@ -26,6 +26,11 @@ import random
 
 import gc
 
+import tensorflow_datasets as tfds
+import time
+
+from torch.utils.data import TensorDataset
+
 torch.cuda.empty_cache()
 gc.collect()
 
@@ -143,52 +148,75 @@ def main(subset_size=.1, greedy=0):
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
-    train_loader__ = torch.utils.data.DataLoader(
-        datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(32, 4),
-            transforms.ToTensor(),
-            normalize,
-        ]), download=True),
-        batch_size=args.batch_size, shuffle=True,
-        num_workers=args.workers, pin_memory=True)
+    def one_hot(labels, num_classes, dtype=np.float32):
+        return (labels[:, None] == np.arange(num_classes)).astype(dtype)
+
+    def sort_by_class(X, Y):
+        sort_idxs = Y.argmax(1).argsort()
+        X, Y = X[sort_idxs], Y[sort_idxs]
+        return X, Y
+
+    def normalize_cifar10_images(X):
+        mean_rgb = np.array([[[[0.4914 * 255, 0.4822 * 255, 0.4465 * 255]]]], dtype=np.float32)
+        std_rgb = np.array([[[[0.2470 * 255, 0.2435 * 255, 0.2616 * 255]]]], dtype=np.float32)
+        X = (X.astype(np.float32) - mean_rgb) / std_rgb
+        return X
+
+    dataset_dir = "/home/aa7514/PycharmProjects/craig/data"
+
+    def load_cifar10_data_diet():
+        # load cifar10
+        print('load cifar10... ', end='')
+        time_start = time.time()
+        (X_train, Y_train), (X_test, Y_test) = tfds.as_numpy(tfds.load(
+            name='cifar10', split=['train', 'test'], data_dir=dataset_dir,
+            batch_size=-1, download=True, as_supervised=True))
+        print(f'{int(time.time() - time_start)}s')
+        # normalize images, one hot labels
+        num_classes = 10
+        r_y_test = Y_test
+        r_y_train = Y_train
+        X_train, X_test = normalize_cifar10_images(X_train), normalize_cifar10_images(X_test)
+        Y_train, Y_test = one_hot(Y_train, num_classes), one_hot(Y_test, num_classes)
+        # sort by class
+        X_train, Y_train = sort_by_class(X_train, Y_train)
+        X_test, Y_test = sort_by_class(X_test, Y_test)
+
+        return X_train, Y_train.argmax(1), X_test, Y_test.argmax(1)
+        # return X_train, Y_train, X_test, Y_test
+
+    X_train, Y_train, X_test, Y_test = load_cifar10_data_diet()
 
     class IndexedDataset(Dataset):
         def __init__(self):
-            self.cifar10 = datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(32, 4),
-            transforms.ToTensor(),
-            normalize,
-        ]), download=True)
+            self.data_tensor = TensorDataset(torch.from_numpy(X_train.transpose(0, 3, 1, 2)),
+                                             torch.from_numpy(Y_train))
 
         def __getitem__(self, index):
-            data, target = self.cifar10[index]
+            data, target = self.data_tensor[index]
             # Your transformations here (or set it in CIFAR10)
             return data, target, index
 
         def __len__(self):
-            return len(self.cifar10)
+            return len(self.data_tensor)
 
     indexed_dataset = IndexedDataset()
     indexed_loader = DataLoader(
         indexed_dataset,
-        batch_size=args.batch_size, shuffle=True,
-        num_workers=args.workers, pin_memory=True)
+        batch_size=args.batch_size,
+        # shuffle=True,
+        shuffle=False,
+        num_workers=1, pin_memory=True)
 
     val_loader = torch.utils.data.DataLoader(
-        datasets.CIFAR10(root='./data', train=False, transform=transforms.Compose([
-            transforms.ToTensor(),
-            normalize,
-        ])),
+        TensorDataset(torch.from_numpy(X_test.transpose(0, 3, 1, 2)),
+                      torch.from_numpy(Y_test)),
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
     train_val_loader = torch.utils.data.DataLoader(
-        datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
-            transforms.ToTensor(),
-            normalize,
-        ])),
+        TensorDataset(torch.from_numpy(X_train.transpose(0, 3, 1, 2)),
+                      torch.from_numpy(Y_train)),
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
@@ -290,20 +318,6 @@ def main(subset_size=.1, greedy=0):
         test_acc_list = []
         train_acc_list = []
 
-        first_gradient_list = []
-        first_gradient_list_wt = []
-        first_gradient_list_wt_scaled = []
-        first_gradient_list_wt_rel = []
-        first_gradient_list_norm_all = []
-        first_gradient_list_norm_sub = []
-
-        loss_error_list = []
-        loss_error_list_wt = []
-        loss_error_list_wt_scaled = []
-        loss_error_list_wt_rel = []
-        loss_error_list_all = []
-        loss_error_list_sub = []
-
         for epoch in range(args.start_epoch, args.epochs):
 
             # train for one epoch
@@ -347,11 +361,11 @@ def main(subset_size=.1, greedy=0):
 
                     weights = np.zeros(len(indexed_loader.dataset))
                     # weights[subset] = np.ones(len(subset))
-                    scaled_weight = subset_weight / np.sum(subset_weight) * len(subset_weight)
+                    subset_weight = subset_weight / np.sum(subset_weight) * len(subset_weight)
                     if args.save_subset:
-                        selected_ndx[run, epoch], selected_wgt[run, epoch] = subset, scaled_weight
+                        selected_ndx[run, epoch], selected_wgt[run, epoch] = subset, subset_weight
 
-                    weights[subset] = scaled_weight
+                    weights[subset] = subset_weight
                     weight = torch.from_numpy(weights).float().cuda()
                     # weight = torch.tensor(weights).cuda()
                     # np.random.shuffle(subset)
@@ -449,89 +463,18 @@ def main(subset_size=.1, greedy=0):
             test_acc_list.append(prec1)
             train_acc_list.append(ta)
 
-            loss_sum = []
-
-            gp, gt, gl = get_gradients(indexed_loader, model, train_criterion)
-
-            first_gradient_all = gp - np.eye(CLASS_NUM)[gt]
-            first_gradient_ss = first_gradient_all[subset]
-
-            first_gradient_ss_wt = first_gradient_ss * np.tile(subset_weight, (CLASS_NUM, 1)).T
-            first_gradient_ss_wt_scaled = first_gradient_ss * np.tile(scaled_weight, (CLASS_NUM, 1)).T
-
-            first_gradient_error = first_gradient_all.sum(axis=0) - first_gradient_ss.sum(axis=0)
-            first_gradient_error_wt = first_gradient_all.sum(axis=0) - first_gradient_ss_wt.sum(axis=0)
-            first_gradient_error_wt_scaled = first_gradient_all.sum(axis=0) - first_gradient_ss_wt_scaled.sum(axis=0)
-
-            first_gradient_norm = np.linalg.norm(first_gradient_error)
-            first_gradient_norm_wt = np.linalg.norm(first_gradient_error_wt)
-            first_gradient_norm_wt_scaled = np.linalg.norm(first_gradient_error_wt_scaled)
-            first_gradient_norm_wt_rel = np.linalg.norm(first_gradient_error_wt) / np.linalg.norm(first_gradient_all.sum(axis=0))
-            first_gradient_norm_all = np.linalg.norm(first_gradient_all.sum(axis=0))
-            first_gradient_norm_sub = np.linalg.norm(first_gradient_ss_wt.sum(axis=0))
-
-
-            loss_all = gl
-            loss_ss = gl[subset]
-            loss_ss_wt = loss_ss * subset_weight
-            loss_ss_wt_scaled = loss_ss * scaled_weight
-
-            loss_error = gl.sum() - loss_ss.sum()
-            loss_error_wt = gl.sum() - loss_ss_wt.sum()
-            loss_error_wt_scaled = gl.sum() - loss_ss_wt_scaled.sum()
-            loss_error_wt_rel = loss_error_wt / gl.sum()
-            loss_error_all = gl.sum()
-            loss_error_sub = loss_ss_wt.sum()
-
-            loss_error_norm = np.linalg.norm(loss_error)
-            loss_error_norm_wt = np.linalg.norm(loss_error_wt)
-            loss_error_norm_wt_scaled = np.linalg.norm(loss_error_wt_scaled)
-
-            first_gradient_list.append(first_gradient_norm)
-            first_gradient_list_wt.append(first_gradient_norm_wt)
-            first_gradient_list_wt_scaled.append(first_gradient_norm_wt_scaled)
-            first_gradient_list_wt_rel.append(first_gradient_norm_wt_rel)
-            first_gradient_list_norm_all.append(first_gradient_norm_all)
-            first_gradient_list_norm_sub.append(first_gradient_norm_sub)
-
-            loss_error_list.append(loss_error)
-            loss_error_list_wt.append(loss_error_wt)
-            loss_error_list_wt_scaled.append(loss_error_wt_scaled)
-            loss_error_list_wt_rel.append(loss_error_wt_rel)
-            loss_error_list_all.append(loss_error_all)
-            loss_error_list_sub.append(loss_error_sub)
-
-            # pdb.set_trace()
-
-            pdb.set_trace()
-
             to_csv = {
                 "Train Loss": train_loss_list,
                 "Test Loss": test_loss_list,
                 "Test Accuracy": test_acc_list,
-                "Train Accuracy": train_acc_list,
-
-                "first_gradient_norm": first_gradient_list,
-                "first_gradient_norm_wt": first_gradient_list_wt,
-                "first_gradient_norm_wt_scaled": first_gradient_list_wt_scaled,
-                "first_gradient_norm_wt_rel": first_gradient_list_wt_rel,
-                "first_gradient_norm_all": first_gradient_list_norm_all,
-                "first_gradient_norm_sub": first_gradient_list_norm_sub,
-
-                "loss_error": loss_error_list,
-                "loss_error_wt": loss_error_list_wt,
-                "loss_error_wt_scaled": loss_error_list_wt_scaled,
-                "loss_error_wt_rel": loss_error_list_wt_rel,
-                "loss_error_all": loss_error_list_all,
-                "loss_error_sub": loss_error_list_sub,
+                "Train Accuracy": train_acc_list
             }
 
             # pdb.set_trace()
 
             # pdb.set_trace()
 
-            # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar10_test_0.csv", sep='\t')
-            # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar100_org_2.csv", sep='\t')
+            pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar10_org_dd_0.csv", sep='\t')
             # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/with_variance_cur7_seed0.csv", sep='\t')
 
 
@@ -651,33 +594,6 @@ def validate(val_loader, model, criterion):
     return top1.avg, losses.avg
 
 
-def get_gradients(val_loader, model, criterion):
-    model.eval()
-
-    preds = torch.zeros(TRAIN_NUM, CLASS_NUM).cuda()
-    labels = torch.zeros(TRAIN_NUM, dtype=torch.int).cuda()
-    loss_list = torch.zeros(TRAIN_NUM).cuda()
-
-    with torch.no_grad():
-        for i, (input, target, idx) in enumerate(val_loader):
-            target = target.cuda()
-            input_var = input.cuda()
-            target_var = target.cuda()
-
-            if args.half:
-                input_var = input_var.half()
-
-            # compute output
-            output = model(input_var)
-            loss = criterion(output, target_var)
-            # pdb.set_trace()
-            preds[idx, :] = nn.Softmax(dim=1)(output)
-            labels[idx] = target.int()
-            loss_list[idx] = loss
-
-    return preds.cpu().data.numpy(), labels.cpu().data.numpy(), loss_list.cpu().data.numpy()
-
-
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     """
     Save the training model
@@ -723,6 +639,7 @@ def predictions(loader, model):
                 input_var = input_var.half()
 
             preds[idx, :] = nn.Softmax(dim=1)(model(input_var))
+            # pdb.set_trace()
             labels[idx] = target.int()
 
             # measure elapsed time
