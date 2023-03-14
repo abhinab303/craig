@@ -292,9 +292,12 @@ def main(subset_size=.1, greedy=0):
 
         first_gradient_list = []
         first_gradient_list_wt = []
+        first_gradient_list_wt_full = []
         first_gradient_list_wt_scaled = []
         first_gradient_list_wt_rel = []
+        first_gradient_list_wt_rel_full = []
         first_gradient_list_norm_all = []
+        first_gradient_list_norm_full = []
         first_gradient_list_norm_sub = []
 
         loss_error_list = []
@@ -304,19 +307,22 @@ def main(subset_size=.1, greedy=0):
         loss_error_list_all = []
         loss_error_list_sub = []
 
+        gradient_storage = []
+        weight = None
         for epoch in range(args.start_epoch, args.epochs):
 
             # train for one epoch
             print('current lr {:.5e}'.format(optimizer.param_groups[0]['lr']))
-
+            # pdb.set_trace()
             #############################
-            weight = None
+
             if subset_size >= 1 or epoch < args.start_subset:
                 print('Training on all the data')
                 train_loader = indexed_loader
 
             elif subset_size < 1 and \
                     (epoch % (args.lag + args.start_subset) == 0 or epoch == args.start_subset):
+            # elif epoch < 3:
                 B = int(subset_size * TRAIN_NUM)
                 if greedy == 0:
                     # order = np.arange(0, TRAIN_NUM)
@@ -347,7 +353,8 @@ def main(subset_size=.1, greedy=0):
 
                     weights = np.zeros(len(indexed_loader.dataset))
                     # weights[subset] = np.ones(len(subset))
-                    scaled_weight = subset_weight / np.sum(subset_weight) * len(subset_weight)
+                    scaled_weight = subset_weight
+                    # scaled_weight = subset_weight / np.sum(subset_weight) * len(subset_weight)
                     if args.save_subset:
                         selected_ndx[run, epoch], selected_wgt[run, epoch] = subset, scaled_weight
 
@@ -372,8 +379,73 @@ def main(subset_size=.1, greedy=0):
                 print(f'{not_selected[run, epoch]:.3f} % not selected yet')
                 #############################
 
+            gp, gt, gl = get_gradients(indexed_loader, model, train_criterion)
+
+            g_full = np.load("./result_com_full_model/cifar10_all_data_0.npz")
+            last_epoch_g_full = g_full["all_gradient"][0]
+
+            first_gradient_all = gp - np.eye(CLASS_NUM)[gt]
+            first_gradient_ss = first_gradient_all[subset]
+
+            gradient_storage.append(first_gradient_all.sum(axis=0))
+
+            first_gradient_ss_wt = first_gradient_ss * np.tile(subset_weight, (CLASS_NUM, 1)).T
+            first_gradient_ss_wt_scaled = first_gradient_ss * np.tile(scaled_weight, (CLASS_NUM, 1)).T
+
+            first_gradient_error = first_gradient_all.sum(axis=0) - first_gradient_ss.sum(axis=0)
+            first_gradient_error_wt = first_gradient_all.sum(axis=0) - first_gradient_ss_wt.sum(axis=0)
+            first_gradient_error_wt_full = last_epoch_g_full - first_gradient_ss_wt.sum(axis=0)
+            first_gradient_error_wt_scaled = first_gradient_all.sum(axis=0) - first_gradient_ss_wt_scaled.sum(axis=0)
+
+            first_gradient_norm = np.linalg.norm(first_gradient_error)
+            first_gradient_norm_wt = np.linalg.norm(first_gradient_error_wt)
+            first_gradient_norm_wt_full = np.linalg.norm(first_gradient_error_wt_full)
+            first_gradient_norm_wt_scaled = np.linalg.norm(first_gradient_error_wt_scaled)
+            first_gradient_norm_wt_rel = np.linalg.norm(first_gradient_error_wt) / np.linalg.norm(
+                first_gradient_all.sum(axis=0))
+            first_gradient_norm_wt_rel_full = first_gradient_norm_wt_full / np.linalg.norm(last_epoch_g_full)
+
+            first_gradient_norm_all = np.linalg.norm(first_gradient_all.sum(axis=0))
+            first_gradient_norm_full = np.linalg.norm(last_epoch_g_full)
+            first_gradient_norm_sub = np.linalg.norm(first_gradient_ss_wt.sum(axis=0))
+            first_gradient_norm_sub_u = np.linalg.norm(first_gradient_ss_wt.sum(axis=0))
+
+            loss_all = gl
+            loss_ss = gl[subset]
+            loss_ss_wt = loss_ss * subset_weight
+            loss_ss_wt_scaled = loss_ss * scaled_weight
+
+            loss_error = gl.sum() - loss_ss.sum()
+            loss_error_wt = gl.sum() - loss_ss_wt.sum()
+            loss_error_wt_scaled = gl.sum() - loss_ss_wt_scaled.sum()
+            loss_error_wt_rel = loss_error_wt / gl.sum()
+            loss_error_all = gl.sum()
+            loss_error_sub = loss_ss_wt.sum()
+            loss_error_sub_u = loss_ss.sum()
+
+            loss_error_norm = np.linalg.norm(loss_error)
+            loss_error_norm_wt = np.linalg.norm(loss_error_wt)
+            loss_error_norm_wt_scaled = np.linalg.norm(loss_error_wt_scaled)
+
+            first_gradient_list.append(first_gradient_norm)
+            first_gradient_list_wt.append(first_gradient_norm_wt)
+            first_gradient_list_wt_full.append(first_gradient_norm_wt_full)
+            first_gradient_list_wt_scaled.append(first_gradient_norm_wt_scaled)
+            first_gradient_list_wt_rel.append(first_gradient_norm_wt_rel)
+            first_gradient_list_wt_rel_full.append(first_gradient_norm_wt_rel_full)
+            first_gradient_list_norm_all.append(first_gradient_norm_all)
+            first_gradient_list_norm_full.append(first_gradient_norm_full)
+            first_gradient_list_norm_sub.append(first_gradient_norm_sub)
+
+            loss_error_list.append(loss_error)
+            loss_error_list_wt.append(loss_error_wt)
+            loss_error_list_wt_scaled.append(loss_error_wt_scaled)
+            loss_error_list_wt_rel.append(loss_error_wt_rel)
+            loss_error_list_all.append(loss_error_all)
+            loss_error_list_sub.append(loss_error_sub)
+
             data_time[run, epoch], train_time[run, epoch] = train(
-                train_loader, model, train_criterion, optimizer, epoch, weight)
+                train_loader, model, train_criterion, optimizer, epoch, weight, RE=first_gradient_norm_wt_rel)
 
             lr_scheduler_f.step()
 
@@ -451,59 +523,11 @@ def main(subset_size=.1, greedy=0):
 
             loss_sum = []
 
-            gp, gt, gl = get_gradients(indexed_loader, model, train_criterion)
 
-            first_gradient_all = gp - np.eye(CLASS_NUM)[gt]
-            first_gradient_ss = first_gradient_all[subset]
-
-            first_gradient_ss_wt = first_gradient_ss * np.tile(subset_weight, (CLASS_NUM, 1)).T
-            first_gradient_ss_wt_scaled = first_gradient_ss * np.tile(scaled_weight, (CLASS_NUM, 1)).T
-
-            first_gradient_error = first_gradient_all.sum(axis=0) - first_gradient_ss.sum(axis=0)
-            first_gradient_error_wt = first_gradient_all.sum(axis=0) - first_gradient_ss_wt.sum(axis=0)
-            first_gradient_error_wt_scaled = first_gradient_all.sum(axis=0) - first_gradient_ss_wt_scaled.sum(axis=0)
-
-            first_gradient_norm = np.linalg.norm(first_gradient_error)
-            first_gradient_norm_wt = np.linalg.norm(first_gradient_error_wt)
-            first_gradient_norm_wt_scaled = np.linalg.norm(first_gradient_error_wt_scaled)
-            first_gradient_norm_wt_rel = np.linalg.norm(first_gradient_error_wt) / np.linalg.norm(first_gradient_all.sum(axis=0))
-            first_gradient_norm_all = np.linalg.norm(first_gradient_all.sum(axis=0))
-            first_gradient_norm_sub = np.linalg.norm(first_gradient_ss_wt.sum(axis=0))
-
-
-            loss_all = gl
-            loss_ss = gl[subset]
-            loss_ss_wt = loss_ss * subset_weight
-            loss_ss_wt_scaled = loss_ss * scaled_weight
-
-            loss_error = gl.sum() - loss_ss.sum()
-            loss_error_wt = gl.sum() - loss_ss_wt.sum()
-            loss_error_wt_scaled = gl.sum() - loss_ss_wt_scaled.sum()
-            loss_error_wt_rel = loss_error_wt / gl.sum()
-            loss_error_all = gl.sum()
-            loss_error_sub = loss_ss_wt.sum()
-
-            loss_error_norm = np.linalg.norm(loss_error)
-            loss_error_norm_wt = np.linalg.norm(loss_error_wt)
-            loss_error_norm_wt_scaled = np.linalg.norm(loss_error_wt_scaled)
-
-            first_gradient_list.append(first_gradient_norm)
-            first_gradient_list_wt.append(first_gradient_norm_wt)
-            first_gradient_list_wt_scaled.append(first_gradient_norm_wt_scaled)
-            first_gradient_list_wt_rel.append(first_gradient_norm_wt_rel)
-            first_gradient_list_norm_all.append(first_gradient_norm_all)
-            first_gradient_list_norm_sub.append(first_gradient_norm_sub)
-
-            loss_error_list.append(loss_error)
-            loss_error_list_wt.append(loss_error_wt)
-            loss_error_list_wt_scaled.append(loss_error_wt_scaled)
-            loss_error_list_wt_rel.append(loss_error_wt_rel)
-            loss_error_list_all.append(loss_error_all)
-            loss_error_list_sub.append(loss_error_sub)
 
             # pdb.set_trace()
 
-            pdb.set_trace()
+            # pdb.set_trace()
 
             to_csv = {
                 "Train Loss": train_loss_list,
@@ -513,9 +537,12 @@ def main(subset_size=.1, greedy=0):
 
                 "first_gradient_norm": first_gradient_list,
                 "first_gradient_norm_wt": first_gradient_list_wt,
+                "first_gradient_norm_wt_full": first_gradient_list_wt_full,
                 "first_gradient_norm_wt_scaled": first_gradient_list_wt_scaled,
                 "first_gradient_norm_wt_rel": first_gradient_list_wt_rel,
+                "first_gradient_norm_wt_rel_full": first_gradient_list_wt_rel_full,
                 "first_gradient_norm_all": first_gradient_list_norm_all,
+                "first_gradient_norm_full": first_gradient_list_norm_full,
                 "first_gradient_norm_sub": first_gradient_list_norm_sub,
 
                 "loss_error": loss_error_list,
@@ -530,9 +557,13 @@ def main(subset_size=.1, greedy=0):
 
             # pdb.set_trace()
 
-            # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar10_test_0.csv", sep='\t')
+            # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar10_unscale_loss.csv", sep='\t')
+            pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar10_no_wt_loss.csv", sep='\t')
             # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar100_org_2.csv", sep='\t')
-            # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/with_variance_cur7_seed0.csv", sep='\t')
+            # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/with_variance_cur7_seed0.csv", sep='\t')\
+            np.savez("/home/aa7514/PycharmProjects/craig/cifar10_no_wt_loss_ss", all_gradient=gradient_storage,
+            # np.savez("/home/aa7514/PycharmProjects/craig/cifar10_unscale_loss", all_gradient=gradient_storage,
+                     subsets=subset, weights=weight.cpu())
 
 
 
@@ -541,7 +572,7 @@ def main(subset_size=.1, greedy=0):
           np.min(not_selected, 1), np.mean(np.min(not_selected, 1)))
 
 
-def train(train_loader, model, criterion, optimizer, epoch, weight=None):
+def train(train_loader, model, criterion, optimizer, epoch, weight=None, RE=1):
     """
         Run one train epoch
     """
@@ -571,7 +602,10 @@ def train(train_loader, model, criterion, optimizer, epoch, weight=None):
         # compute output
         output = model(input_var)
         loss = criterion(output, target_var)
-        loss = (loss * weight[idx.long()]).mean()  # (Note)
+        loss = (loss).mean()  # (Note)
+        # loss = (loss * weight[idx.long()]).mean()  # (Note)
+
+        # loss = loss*RE
 
         # compute gradient and do SGD step
         optimizer.zero_grad()

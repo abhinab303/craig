@@ -277,7 +277,8 @@ def get_facility_location_submodular_order(S, B, c, smtk=0, no=0, stoch_greedy=0
     for i in range(N):
         # pdb.set_trace()
         if weights is None:
-            sz[np.argmax(S[i, order])] += 1
+            if len(order):
+                sz[np.argmax(S[i, order])] += 1
         else:
             sz[np.argmax(S[i, order])] += weights[i]
     # print('time (sec) for computing facility location:', greedy_time, flush=True)
