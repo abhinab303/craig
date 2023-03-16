@@ -661,7 +661,7 @@ def train(train_loader, model, criterion, optimizer, epoch, weight=None, RE=1, s
                 }
             )
 
-            acc_list_batch.to_csv(f'./files/cifar100_per_batch_bs512.csv')
+            acc_list_batch.to_csv(f'./cifar100_per_batch_bs512.csv')
 
         # measure elapsed time
         batch_time.update(time.time() - end)
