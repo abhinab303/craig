@@ -103,7 +103,7 @@ parser.add_argument('--start-subset', '-st', default=0, type=int, metavar='N', h
 parser.add_argument('--save_subset', dest='save_subset', action='store_true', help='save_subset')
 
 TRAIN_NUM = 50000
-CLASS_NUM = 10
+CLASS_NUM = 100
 
 
 def main(subset_size=.1, greedy=0):
@@ -144,7 +144,7 @@ def main(subset_size=.1, greedy=0):
                                      std=[0.229, 0.224, 0.225])
 
     train_loader__ = torch.utils.data.DataLoader(
-        datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+        datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(32, 4),
             transforms.ToTensor(),
@@ -155,7 +155,7 @@ def main(subset_size=.1, greedy=0):
 
     class IndexedDataset(Dataset):
         def __init__(self):
-            self.cifar10 = datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+            self.cifar100 = datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(32, 4),
             transforms.ToTensor(),
@@ -163,12 +163,12 @@ def main(subset_size=.1, greedy=0):
         ]), download=True)
 
         def __getitem__(self, index):
-            data, target = self.cifar10[index]
+            data, target = self.cifar100[index]
             # Your transformations here (or set it in CIFAR10)
             return data, target, index
 
         def __len__(self):
-            return len(self.cifar10)
+            return len(self.cifar100)
 
     indexed_dataset = IndexedDataset()
     indexed_loader = DataLoader(
@@ -177,7 +177,7 @@ def main(subset_size=.1, greedy=0):
         num_workers=args.workers, pin_memory=True)
 
     val_loader = torch.utils.data.DataLoader(
-        datasets.CIFAR10(root='./data', train=False, transform=transforms.Compose([
+        datasets.CIFAR100(root='./data', train=False, transform=transforms.Compose([
             transforms.ToTensor(),
             normalize,
         ])),
@@ -185,7 +185,7 @@ def main(subset_size=.1, greedy=0):
         num_workers=args.workers, pin_memory=True)
 
     train_val_loader = torch.utils.data.DataLoader(
-        datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+        datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
             transforms.ToTensor(),
             normalize,
         ])),
@@ -317,9 +317,7 @@ def main(subset_size=.1, greedy=0):
             "train_loss_list_batch": [],
             "test_loss_list_batch": [],
             "test_acc_list_batch": [],
-            "test_acc5_list_batch": [],
             "train_acc_list_batch": [],
-            "train_acc_list_batch_all": []
         }
 
         weight = None
@@ -351,7 +349,7 @@ def main(subset_size=.1, greedy=0):
                 else:  # Note: warm start
                     if args.cluster_features:
                         print(f'Selecting {B} elements greedily from features')
-                        data = datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+                        data = datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
                             transforms.RandomHorizontalFlip(),
                             transforms.RandomCrop(32, 4),
                             transforms.ToTensor(),
@@ -398,7 +396,7 @@ def main(subset_size=.1, greedy=0):
 
             gp, gt, gl = get_gradients(indexed_loader, model, train_criterion)
 
-            g_full = np.load("./result_com_full_model/cifar10_all_data_0.npz")
+            g_full = np.load("./result_com_full_model/cifar100_all_data_0.npz")
             last_epoch_g_full = g_full["all_gradient"][0]
 
             first_gradient_all = gp - np.eye(CLASS_NUM)[gt]
@@ -463,7 +461,8 @@ def main(subset_size=.1, greedy=0):
 
             data_time[run, epoch], train_time[run, epoch] = train(
                 train_loader, model, train_criterion, optimizer, epoch, weight, RE=first_gradient_norm_wt_rel,
-            store_dict=per_batch_dict)
+                store_dict=per_batch_dict, train_val_loader=train_val_loader, val_criterion=val_criterion,
+                val_loader=val_loader)
 
             lr_scheduler_f.step()
 
@@ -509,7 +508,7 @@ def main(subset_size=.1, greedy=0):
             grd += f'_warm' if args.warm_start > 0 else ''
             grd += f'_feature' if args.cluster_features else ''
             grd += f'_ca' if args.cluster_all else ''
-            folder = f'/tmp/cifar10'
+            folder = f'/tmp/cifar100'
 
             if args.save_subset:
                 print(
@@ -576,7 +575,7 @@ def main(subset_size=.1, greedy=0):
             # pdb.set_trace()
 
             # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar10_unscale_loss.csv", sep='\t')
-            pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar10_10b_512bs.csv", sep='\t')
+            pd.DataFrame(to_csv).to_csv("./cifar100_per_batch_10b_512bs.csv", sep='\t')
             # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar100_org_2.csv", sep='\t')
             # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/with_variance_cur7_seed0.csv", sep='\t')\
             # np.savez("/home/aa7514/PycharmProjects/craig/cifar10_100b_512bs_ss", all_gradient=gradient_storage,
@@ -590,7 +589,8 @@ def main(subset_size=.1, greedy=0):
           np.min(not_selected, 1), np.mean(np.min(not_selected, 1)))
 
 
-def train(train_loader, model, criterion, optimizer, epoch, weight=None, RE=1, store_dict={}):
+def train(train_loader, model, criterion, optimizer, epoch, weight=None, RE=1, store_dict={},
+          train_val_loader=None, val_criterion=None, val_loader=None):
     """
         Run one train epoch
     """
@@ -643,6 +643,25 @@ def train(train_loader, model, criterion, optimizer, epoch, weight=None, RE=1, s
         prec1 = accuracy(output.data, target)[0]
         losses.update(loss.item(), input.size(0))
         top1.update(prec1.item(), input.size(0))
+
+        if (store_dict['batch_count'] % 10) == 0 or store_dict['batch_count'] == 1:
+            ta, tl = validate(train_val_loader, model, val_criterion)
+            ta_test, tl_test = validate(val_loader, model, val_criterion)
+            store_dict['batch_list'].append(store_dict['batch_count'])
+            store_dict['test_acc_list_batch'].append(ta_test)
+            store_dict['train_loss_list_batch'].append(tl)
+            store_dict['train_acc_list_batch'].append(ta)
+
+            acc_list_batch = pd.DataFrame(
+                {
+                    'batch': store_dict['batch_list'],
+                    'test_acc': store_dict['test_acc_list_batch'],
+                    'train_acc': store_dict['train_acc_list_batch'],
+                    'train_loss': store_dict['train_loss_list_batch'],
+                }
+            )
+
+            acc_list_batch.to_csv(f'./files/cifar100_per_batch_bs512.csv')
 
         # measure elapsed time
         batch_time.update(time.time() - end)
