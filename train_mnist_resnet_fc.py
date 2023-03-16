@@ -15,6 +15,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 # import resnet_icml as resnet
 import resnet
+from resnet import MnistModel
 # from other_resnet import resnet18
 
 from torch.utils.data import Dataset, DataLoader
@@ -102,7 +103,7 @@ parser.add_argument('--cluster_all', '-ca', dest='cluster_all', action='store_tr
 parser.add_argument('--start-subset', '-st', default=0, type=int, metavar='N', help='start subset selection')
 parser.add_argument('--save_subset', dest='save_subset', action='store_true', help='save_subset')
 
-TRAIN_NUM = 50000
+TRAIN_NUM = 60000
 CLASS_NUM = 10
 
 
@@ -121,7 +122,8 @@ def main(subset_size=.1, greedy=0):
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
 
-    model = torch.nn.DataParallel(resnet.__dict__[args.arch]())
+    # model = torch.nn.DataParallel(resnet.__dict__[args.arch]())
+    model = torch.nn.DataParallel(MnistModel())
     # model = torch.nn.DataParallel(resnet18())
     model.cuda()
 
@@ -142,33 +144,31 @@ def main(subset_size=.1, greedy=0):
 
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
+    from torchvision.transforms import Compose, ToTensor, Normalize, Resize
+    mnist = datasets.MNIST(download=False, train=True, root="./data").train_data.float()
+    # data_transform = Compose([Resize((728,)), ToTensor(), Normalize((mnist.mean() / 255,), (mnist.std() / 255,))])
+    data_transform = Compose([ToTensor(), Normalize((mnist.mean() / 255,), (mnist.std() / 255,))])
 
     train_loader__ = torch.utils.data.DataLoader(
-        datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(32, 4),
-            transforms.ToTensor(),
-            normalize,
-        ]), download=True),
+        datasets.MNIST(root='./data', train=True,
+                       transform=data_transform,
+                       download=True),
         batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True)
 
     class IndexedDataset(Dataset):
         def __init__(self):
-            self.cifar10 = datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(32, 4),
-            transforms.ToTensor(),
-            normalize,
-        ]), download=True)
+            self.MNIST = datasets.MNIST(root='./data', train=True,
+                                        transform=data_transform,
+                                        download=True)
 
         def __getitem__(self, index):
-            data, target = self.cifar10[index]
+            data, target = self.MNIST[index]
             # Your transformations here (or set it in CIFAR10)
             return data, target, index
 
         def __len__(self):
-            return len(self.cifar10)
+            return len(self.MNIST)
 
     indexed_dataset = IndexedDataset()
     indexed_loader = DataLoader(
@@ -177,18 +177,16 @@ def main(subset_size=.1, greedy=0):
         num_workers=args.workers, pin_memory=True)
 
     val_loader = torch.utils.data.DataLoader(
-        datasets.CIFAR10(root='./data', train=False, transform=transforms.Compose([
-            transforms.ToTensor(),
-            normalize,
-        ])),
+        datasets.MNIST(root='./data', train=False,
+                       transform=data_transform
+                       ),
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
     train_val_loader = torch.utils.data.DataLoader(
-        datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
-            transforms.ToTensor(),
-            normalize,
-        ])),
+        datasets.MNIST(root='./data', train=True,
+                       transform=data_transform
+                       ),
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
@@ -236,9 +234,12 @@ def main(subset_size=.1, greedy=0):
             order = order[:B]
             print(f'Random init subset size: {args.random_subset_size}% = {B}')
 
-        model = torch.nn.DataParallel(resnet.__dict__[args.arch]())
+        # model = torch.nn.DataParallel(resnet.__dict__[args.arch]())
+        model = torch.nn.DataParallel(MnistModel())
         # model = torch.nn.DataParallel(resnet18())
         model.cuda()
+
+        # pdb.set_trace()
 
         best_prec1, best_loss = 0, 1e10
 
@@ -250,7 +251,6 @@ def main(subset_size=.1, greedy=0):
         else:
             optimizer = torch.optim.SGD(model.parameters(),
                                         lr,
-                                        # 0.002,
                                         momentum=args.momentum,
                                         weight_decay=args.weight_decay)
 
@@ -274,8 +274,7 @@ def main(subset_size=.1, greedy=0):
             lr_scheduler_f = GradualWarmupScheduler(optimizer, 1.0, 20, lr_scheduler)
         else:
             print('No Warm start')
-            # lr_scheduler_f = lr_scheduler
-            lr_scheduler_f = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.epochs, gamma=1.0)
+            lr_scheduler_f = lr_scheduler
 
         if args.arch in ['resnet1202', 'resnet110']:
             # for resnet1202 original paper uses lr=0.01 for first 400 minibatches for warm-up
@@ -339,12 +338,15 @@ def main(subset_size=.1, greedy=0):
                 else:  # Note: warm start
                     if args.cluster_features:
                         print(f'Selecting {B} elements greedily from features')
-                        data = datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
-                            transforms.RandomHorizontalFlip(),
-                            transforms.RandomCrop(32, 4),
-                            transforms.ToTensor(),
-                            normalize,
-                        ]), download=True)
+                        data = datasets.MNIST(root='./data', train=True,
+                        #                       transform=transforms.Compose([
+                        #     transforms.RandomHorizontalFlip(),
+                        #     transforms.RandomCrop(32, 4),
+                        #     transforms.ToTensor(),
+                        #     normalize,
+                        # ]),
+                                              transform=data_transform,
+                                              download=True)
                         preds, labels = np.reshape(data.data, (len(data.targets), -1)), data.targets
                     else:
                         print(f'Selecting {B} elements greedily from predictions')
@@ -386,8 +388,8 @@ def main(subset_size=.1, greedy=0):
 
             gp, gt, gl = get_gradients(indexed_loader, model, train_criterion)
 
-            g_full = np.load("./result_com_full_model/cifar10_all_data_0.npz")
-            last_epoch_g_full = g_full["all_gradient"][0]
+            # g_full = np.load("./result_com_full_model/cifar10_all_data_0.npz")
+            # last_epoch_g_full = g_full["all_gradient"][0]
 
             first_gradient_all = gp - np.eye(CLASS_NUM)[gt]
             first_gradient_ss = first_gradient_all[subset]
@@ -399,19 +401,19 @@ def main(subset_size=.1, greedy=0):
 
             first_gradient_error = first_gradient_all.sum(axis=0) - first_gradient_ss.sum(axis=0)
             first_gradient_error_wt = first_gradient_all.sum(axis=0) - first_gradient_ss_wt.sum(axis=0)
-            first_gradient_error_wt_full = last_epoch_g_full - first_gradient_ss_wt.sum(axis=0)
+            # first_gradient_error_wt_full = last_epoch_g_full - first_gradient_ss_wt.sum(axis=0)
             first_gradient_error_wt_scaled = first_gradient_all.sum(axis=0) - first_gradient_ss_wt_scaled.sum(axis=0)
 
             first_gradient_norm = np.linalg.norm(first_gradient_error)
             first_gradient_norm_wt = np.linalg.norm(first_gradient_error_wt)
-            first_gradient_norm_wt_full = np.linalg.norm(first_gradient_error_wt_full)
+            # first_gradient_norm_wt_full = np.linalg.norm(first_gradient_error_wt_full)
             first_gradient_norm_wt_scaled = np.linalg.norm(first_gradient_error_wt_scaled)
             first_gradient_norm_wt_rel = np.linalg.norm(first_gradient_error_wt) / np.linalg.norm(
                 first_gradient_all.sum(axis=0))
-            first_gradient_norm_wt_rel_full = first_gradient_norm_wt_full / np.linalg.norm(last_epoch_g_full)
+            # first_gradient_norm_wt_rel_full = first_gradient_norm_wt_full / np.linalg.norm(last_epoch_g_full)
 
             first_gradient_norm_all = np.linalg.norm(first_gradient_all.sum(axis=0))
-            first_gradient_norm_full = np.linalg.norm(last_epoch_g_full)
+            # first_gradient_norm_full = np.linalg.norm(last_epoch_g_full)
             first_gradient_norm_sub = np.linalg.norm(first_gradient_ss_wt.sum(axis=0))
             first_gradient_norm_sub_u = np.linalg.norm(first_gradient_ss_wt.sum(axis=0))
 
@@ -434,12 +436,15 @@ def main(subset_size=.1, greedy=0):
 
             first_gradient_list.append(first_gradient_norm)
             first_gradient_list_wt.append(first_gradient_norm_wt)
-            first_gradient_list_wt_full.append(first_gradient_norm_wt_full)
+            # first_gradient_list_wt_full.append(first_gradient_norm_wt_full)
+            first_gradient_list_wt_full.append(0)
             first_gradient_list_wt_scaled.append(first_gradient_norm_wt_scaled)
             first_gradient_list_wt_rel.append(first_gradient_norm_wt_rel)
-            first_gradient_list_wt_rel_full.append(first_gradient_norm_wt_rel_full)
+            # first_gradient_list_wt_rel_full.append(first_gradient_norm_wt_rel_full)
+            first_gradient_list_wt_rel_full.append(0)
             first_gradient_list_norm_all.append(first_gradient_norm_all)
-            first_gradient_list_norm_full.append(first_gradient_norm_full)
+            # first_gradient_list_norm_full.append(first_gradient_norm_full)
+            first_gradient_list_norm_full.append(0)
             first_gradient_list_norm_sub.append(first_gradient_norm_sub)
 
             loss_error_list.append(loss_error)
@@ -496,7 +501,7 @@ def main(subset_size=.1, greedy=0):
             grd += f'_warm' if args.warm_start > 0 else ''
             grd += f'_feature' if args.cluster_features else ''
             grd += f'_ca' if args.cluster_all else ''
-            folder = f'/tmp/cifar10'
+            folder = f'/tmp/MNIST'
 
             if args.save_subset:
                 print(
@@ -562,13 +567,14 @@ def main(subset_size=.1, greedy=0):
 
             # pdb.set_trace()
 
+            pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/MNIST_100b.csv", sep='\t')
             # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar10_unscale_loss.csv", sep='\t')
-            pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar10_10b_512bs.csv", sep='\t')
+            # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar10_no_wt_loss.csv", sep='\t')
             # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar100_org_2.csv", sep='\t')
             # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/with_variance_cur7_seed0.csv", sep='\t')\
-            # np.savez("/home/aa7514/PycharmProjects/craig/cifar10_100b_512bs_ss", all_gradient=gradient_storage,
+            # np.savez("/home/aa7514/PycharmProjects/craig/cifar10_no_wt_loss_ss", all_gradient=gradient_storage,
             # np.savez("/home/aa7514/PycharmProjects/craig/cifar10_unscale_loss", all_gradient=gradient_storage,
-            #          subsets=subset, weights=weight.cpu())
+            np.savez("/home/aa7514/PycharmProjects/craig/MNIST_100b", all_gradient=gradient_storage,)
 
 
 
@@ -593,11 +599,8 @@ def train(train_loader, model, criterion, optimizer, epoch, weight=None, RE=1):
     model.train()
 
     end = time.time()
-
-    # optimizer.zero_grad()
-
     for i, (input, target, idx) in enumerate(train_loader):
-
+        input = input.reshape(input.shape[0], 784)
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -616,12 +619,10 @@ def train(train_loader, model, criterion, optimizer, epoch, weight=None, RE=1):
         # loss = loss*RE
 
         # compute gradient and do SGD step
-        # pdb.set_trace()
+        optimizer.zero_grad()
 
-        optimizer.zero_grad()             ######
         loss.backward()
-        optimizer.step()                  ######
-
+        optimizer.step()
 
         output = output.float()
         loss = loss.float()
@@ -642,14 +643,6 @@ def train(train_loader, model, criterion, optimizer, epoch, weight=None, RE=1):
         #           'Prec@1 {top1.val:.3f} ({top1.avg:.3f})'.format(
         #               epoch, i, len(train_loader), batch_time=batch_time,
         #               data_time=data_time, loss=losses, top1=top1))
-
-    # optimizer.step()
-
-    # measure accuracy and record loss
-    # prec1 = accuracy(output.data, target)[0]
-    # losses.update(loss.item(), input.size(0))
-    # top1.update(prec1.item(), input.size(0))
-
     return data_time.sum, batch_time.sum
 
 
@@ -667,6 +660,7 @@ def validate(val_loader, model, criterion):
     end = time.time()
     with torch.no_grad():
         for i, (input, target) in enumerate(val_loader):
+            input = input.reshape(input.shape[0], 784)
             target = target.cuda()
             input_var = input.cuda()
             target_var = target.cuda()
@@ -712,6 +706,7 @@ def get_gradients(val_loader, model, criterion):
 
     with torch.no_grad():
         for i, (input, target, idx) in enumerate(val_loader):
+            input = input.reshape(input.shape[0], 784)
             target = target.cuda()
             input_var = input.cuda()
             target_var = target.cuda()
@@ -722,11 +717,13 @@ def get_gradients(val_loader, model, criterion):
             # compute output
             output = model(input_var)
             loss = criterion(output, target_var)
-            type(loss)
             # pdb.set_trace()
             preds[idx, :] = nn.Softmax(dim=1)(output)
             labels[idx] = target.int()
             loss_list[idx] = loss
+
+
+
 
     return preds.cpu().data.numpy(), labels.cpu().data.numpy(), loss_list.cpu().data.numpy()
 
@@ -770,10 +767,13 @@ def predictions(loader, model):
     end = time.time()
     with torch.no_grad():
         for i, (input, target, idx) in enumerate(loader):
+            input = input.reshape(input.shape[0], 784)
             input_var = input.cuda()
 
             if args.half:
                 input_var = input_var.half()
+
+            # pdb.set_trace()
 
             preds[idx, :] = nn.Softmax(dim=1)(model(input_var))
             labels[idx] = target.int()

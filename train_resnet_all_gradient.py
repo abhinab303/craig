@@ -250,7 +250,6 @@ def main(subset_size=.1, greedy=0):
         else:
             optimizer = torch.optim.SGD(model.parameters(),
                                         lr,
-                                        # 0.002,
                                         momentum=args.momentum,
                                         weight_decay=args.weight_decay)
 
@@ -274,8 +273,7 @@ def main(subset_size=.1, greedy=0):
             lr_scheduler_f = GradualWarmupScheduler(optimizer, 1.0, 20, lr_scheduler)
         else:
             print('No Warm start')
-            # lr_scheduler_f = lr_scheduler
-            lr_scheduler_f = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.epochs, gamma=1.0)
+            lr_scheduler_f = lr_scheduler
 
         if args.arch in ['resnet1202', 'resnet110']:
             # for resnet1202 original paper uses lr=0.01 for first 400 minibatches for warm-up
@@ -311,9 +309,6 @@ def main(subset_size=.1, greedy=0):
 
         gradient_storage = []
         weight = None
-        subset = np.array([x for x in range(TRAIN_NUM)])
-        subset_weight = np.ones(TRAIN_NUM)
-        scaled_weight = np.ones(TRAIN_NUM)
         for epoch in range(args.start_epoch, args.epochs):
 
             # train for one epoch
@@ -566,9 +561,9 @@ def main(subset_size=.1, greedy=0):
             pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar10_10b_512bs.csv", sep='\t')
             # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar100_org_2.csv", sep='\t')
             # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/with_variance_cur7_seed0.csv", sep='\t')\
-            # np.savez("/home/aa7514/PycharmProjects/craig/cifar10_100b_512bs_ss", all_gradient=gradient_storage,
+            np.savez("/home/aa7514/PycharmProjects/craig/cifar10_10b_512bs_ss", all_gradient=gradient_storage,
             # np.savez("/home/aa7514/PycharmProjects/craig/cifar10_unscale_loss", all_gradient=gradient_storage,
-            #          subsets=subset, weights=weight.cpu())
+                     subsets=subset, weights=weight.cpu())
 
 
 
@@ -593,9 +588,6 @@ def train(train_loader, model, criterion, optimizer, epoch, weight=None, RE=1):
     model.train()
 
     end = time.time()
-
-    # optimizer.zero_grad()
-
     for i, (input, target, idx) in enumerate(train_loader):
 
         # measure data loading time
@@ -616,12 +608,10 @@ def train(train_loader, model, criterion, optimizer, epoch, weight=None, RE=1):
         # loss = loss*RE
 
         # compute gradient and do SGD step
-        # pdb.set_trace()
+        optimizer.zero_grad()
 
-        optimizer.zero_grad()             ######
         loss.backward()
-        optimizer.step()                  ######
-
+        optimizer.step()
 
         output = output.float()
         loss = loss.float()
@@ -642,14 +632,6 @@ def train(train_loader, model, criterion, optimizer, epoch, weight=None, RE=1):
         #           'Prec@1 {top1.val:.3f} ({top1.avg:.3f})'.format(
         #               epoch, i, len(train_loader), batch_time=batch_time,
         #               data_time=data_time, loss=losses, top1=top1))
-
-    # optimizer.step()
-
-    # measure accuracy and record loss
-    # prec1 = accuracy(output.data, target)[0]
-    # losses.update(loss.item(), input.size(0))
-    # top1.update(prec1.item(), input.size(0))
-
     return data_time.sum, batch_time.sum
 
 
@@ -703,12 +685,15 @@ def validate(val_loader, model, criterion):
     return top1.avg, losses.avg
 
 
-def get_gradients(val_loader, model, criterion):
+def get_gradients(val_loader, model, criterion, s):
     model.eval()
 
     preds = torch.zeros(TRAIN_NUM, CLASS_NUM).cuda()
     labels = torch.zeros(TRAIN_NUM, dtype=torch.int).cuda()
     loss_list = torch.zeros(TRAIN_NUM).cuda()
+
+    full_grad_sum = None
+    sub_grad_sum = None
 
     with torch.no_grad():
         for i, (input, target, idx) in enumerate(val_loader):
@@ -722,7 +707,6 @@ def get_gradients(val_loader, model, criterion):
             # compute output
             output = model(input_var)
             loss = criterion(output, target_var)
-            type(loss)
             # pdb.set_trace()
             preds[idx, :] = nn.Softmax(dim=1)(output)
             labels[idx] = target.int()

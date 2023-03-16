@@ -88,6 +88,13 @@ class ResNet(nn.Module):
         super(ResNet, self).__init__()
         self.in_planes = 16
 
+        # MNIST:
+        # self.conv1 = torch.nn.Conv2d(1, 64,
+        #                              kernel_size=(7, 7),
+        #                              stride=(2, 2),
+        #                              padding=(3, 3), bias=False)
+        # self.conv1 = nn.Conv2d(1, 16, kernel_size=3, stride=1, padding=1, bias=False)
+
         self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(16)
         self.layer1 = self._make_layer(block, 16, num_blocks[0], stride=1)
@@ -149,6 +156,18 @@ def test(net):
         total_params += np.prod(x.data.numpy().shape)
     print("Total number of params", total_params)
     print("Total layers", len(list(filter(lambda p: p.requires_grad and len(p.data.size())>1, net.parameters()))))
+
+
+class MnistModel(nn.Module):
+    def __init__(self):
+        super(MnistModel, self).__init__()
+        self.fc1 = nn.Linear(784, 100)
+        self.fc2 = nn.Linear(100, 10)
+
+    def forward(self, x):
+        x = F.sigmoid(self.fc1(x))
+        out = self.fc2(x)
+        return out
 
 
 if __name__ == "__main__":
