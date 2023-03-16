@@ -310,6 +310,18 @@ def main(subset_size=.1, greedy=0):
         loss_error_list_sub = []
 
         gradient_storage = []
+
+        per_batch_dict = {
+            "batch_count": 0,
+            "batch_list" : [],
+            "train_loss_list_batch": [],
+            "test_loss_list_batch": [],
+            "test_acc_list_batch": [],
+            "test_acc5_list_batch": [],
+            "train_acc_list_batch": [],
+            "train_acc_list_batch_all": []
+        }
+
         weight = None
         subset = np.array([x for x in range(TRAIN_NUM)])
         subset_weight = np.ones(TRAIN_NUM)
@@ -450,7 +462,8 @@ def main(subset_size=.1, greedy=0):
             loss_error_list_sub.append(loss_error_sub)
 
             data_time[run, epoch], train_time[run, epoch] = train(
-                train_loader, model, train_criterion, optimizer, epoch, weight, RE=first_gradient_norm_wt_rel)
+                train_loader, model, train_criterion, optimizer, epoch, weight, RE=first_gradient_norm_wt_rel,
+            store_dict=per_batch_dict)
 
             lr_scheduler_f.step()
 
@@ -577,7 +590,7 @@ def main(subset_size=.1, greedy=0):
           np.min(not_selected, 1), np.mean(np.min(not_selected, 1)))
 
 
-def train(train_loader, model, criterion, optimizer, epoch, weight=None, RE=1):
+def train(train_loader, model, criterion, optimizer, epoch, weight=None, RE=1, store_dict={}):
     """
         Run one train epoch
     """
@@ -590,14 +603,15 @@ def train(train_loader, model, criterion, optimizer, epoch, weight=None, RE=1):
     top1 = AverageMeter()
 
     # switch to train mode
-    model.train()
+    # model.train()
 
     end = time.time()
 
     # optimizer.zero_grad()
 
     for i, (input, target, idx) in enumerate(train_loader):
-
+        model.train()
+        store_dict['batch_count'] += 1
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -633,6 +647,8 @@ def train(train_loader, model, criterion, optimizer, epoch, weight=None, RE=1):
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
+
+
 
         # if i % args.print_freq == 0:
         #     print('Epoch: [{0}][{1}/{2}]\t'
