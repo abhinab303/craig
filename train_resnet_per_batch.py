@@ -575,7 +575,7 @@ def main(subset_size=.1, greedy=0):
             # pdb.set_trace()
 
             # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar10_unscale_loss.csv", sep='\t')
-            pd.DataFrame(to_csv).to_csv("./cifar100_per_batch_10b_512bs.csv", sep='\t')
+            pd.DataFrame(to_csv).to_csv("./cifar100_per_batch_100b_512bs.csv", sep='\t')
             # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar100_org_2.csv", sep='\t')
             # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/with_variance_cur7_seed0.csv", sep='\t')\
             # np.savez("/home/aa7514/PycharmProjects/craig/cifar10_100b_512bs_ss", all_gradient=gradient_storage,
@@ -661,7 +661,7 @@ def train(train_loader, model, criterion, optimizer, epoch, weight=None, RE=1, s
                 }
             )
 
-            acc_list_batch.to_csv(f'./cifar100_per_batch_bs512.csv')
+            acc_list_batch.to_csv(f'./cifar100_per_batch_b100_bs512.csv')
 
         # measure elapsed time
         batch_time.update(time.time() - end)
