@@ -353,7 +353,7 @@ def main(subset_size=.1, greedy=0):
 
                     fl_labels = np.zeros(np.shape(labels), dtype=int) if args.cluster_all else labels
                     subset, subset_weight, _, _, ordering_time, similarity_time = util.get_orders_and_weights(
-                        B, preds, 'euclidean', smtk=args.smtk, no=0, y=fl_labels, stoch_greedy=args.st_grd,
+                        B, preds, 'cosine', smtk=args.smtk, no=0, y=fl_labels, stoch_greedy=args.st_grd,
                         equal_num=True)
 
                     weights = np.zeros(len(indexed_loader.dataset))
@@ -514,10 +514,10 @@ def main(subset_size=.1, greedy=0):
             else:
                 print(
                     f'Saving the results to {folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
-                    f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256')
+                    f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_cosine')
 
                 np.savez(f'{folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
-                         f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256',
+                         f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_cosine',
                          train_loss=train_loss, test_acc=test_acc, train_acc=train_acc, test_loss=test_loss,
                          data_time=data_time, train_time=train_time, grd_time=grd_time, sim_time=sim_time,
                          best_g=best_gs, best_b=best_bs, not_selected=not_selected,
