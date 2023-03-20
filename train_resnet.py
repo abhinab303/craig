@@ -39,7 +39,7 @@ np.random.seed(0)
 simplefilter(action='ignore', category=FutureWarning)
 np.seterr(all='ignore')
 
-CUDA_VISIBLE_DEVICES = 0
+# CUDA_VISIBLE_DEVICES = 0
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   # see issue #152
 
 model_names = sorted(name for name in resnet.__dict__
@@ -103,7 +103,7 @@ parser.add_argument('--start-subset', '-st', default=0, type=int, metavar='N', h
 parser.add_argument('--save_subset', dest='save_subset', action='store_true', help='save_subset')
 
 TRAIN_NUM = 50000
-CLASS_NUM = 100
+CLASS_NUM = 10
 
 
 def main(subset_size=.1, greedy=0):
@@ -144,7 +144,7 @@ def main(subset_size=.1, greedy=0):
                                      std=[0.229, 0.224, 0.225])
 
     train_loader__ = torch.utils.data.DataLoader(
-        datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
+        datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(32, 4),
             transforms.ToTensor(),
@@ -155,7 +155,7 @@ def main(subset_size=.1, greedy=0):
 
     class IndexedDataset(Dataset):
         def __init__(self):
-            self.cifar100 = datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
+            self.cifar10 = datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(32, 4),
             transforms.ToTensor(),
@@ -163,12 +163,12 @@ def main(subset_size=.1, greedy=0):
         ]), download=True)
 
         def __getitem__(self, index):
-            data, target = self.cifar100[index]
+            data, target = self.cifar10[index]
             # Your transformations here (or set it in CIFAR10)
             return data, target, index
 
         def __len__(self):
-            return len(self.cifar100)
+            return len(self.cifar10)
 
     indexed_dataset = IndexedDataset()
     indexed_loader = DataLoader(
@@ -177,7 +177,7 @@ def main(subset_size=.1, greedy=0):
         num_workers=args.workers, pin_memory=True)
 
     val_loader = torch.utils.data.DataLoader(
-        datasets.CIFAR100(root='./data', train=False, transform=transforms.Compose([
+        datasets.CIFAR10(root='./data', train=False, transform=transforms.Compose([
             transforms.ToTensor(),
             normalize,
         ])),
@@ -185,7 +185,7 @@ def main(subset_size=.1, greedy=0):
         num_workers=args.workers, pin_memory=True)
 
     train_val_loader = torch.utils.data.DataLoader(
-        datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
+        datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
             transforms.ToTensor(),
             normalize,
         ])),
@@ -339,7 +339,7 @@ def main(subset_size=.1, greedy=0):
                 else:  # Note: warm start
                     if args.cluster_features:
                         print(f'Selecting {B} elements greedily from features')
-                        data = datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
+                        data = datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
                             transforms.RandomHorizontalFlip(),
                             transforms.RandomCrop(32, 4),
                             transforms.ToTensor(),
@@ -353,13 +353,15 @@ def main(subset_size=.1, greedy=0):
 
                     fl_labels = np.zeros(np.shape(labels), dtype=int) if args.cluster_all else labels
                     subset, subset_weight, _, _, ordering_time, similarity_time = util.get_orders_and_weights(
-                        B, preds, 'cosine', smtk=args.smtk, no=0, y=fl_labels, stoch_greedy=args.st_grd,
+                        B, preds, 'euclidean', smtk=args.smtk, no=0, y=fl_labels, stoch_greedy=args.st_grd,
                         equal_num=True)
 
                     weights = np.zeros(len(indexed_loader.dataset))
                     # weights[subset] = np.ones(len(subset))
-                    # scaled_weight = subset_weight
-                    scaled_weight = subset_weight / np.sum(subset_weight) * len(subset_weight)
+                    scaled_weight = subset_weight
+                    # scaled_weight = subset_weight / np.sum(subset_weight)
+                    # scaled_weight = subset_weight  * len(subset_weight) / np.sum(subset_weight)
+                    # scaled_weight = subset_weight * 0.01
                     if args.save_subset:
                         selected_ndx[run, epoch], selected_wgt[run, epoch] = subset, scaled_weight
 
@@ -498,7 +500,7 @@ def main(subset_size=.1, greedy=0):
             grd += f'_warm' if args.warm_start > 0 else ''
             grd += f'_feature' if args.cluster_features else ''
             grd += f'_ca' if args.cluster_all else ''
-            folder = f'./tmp/cifar100'
+            folder = f'./tmp/cifar10_batch_mean'
 
             if args.save_subset:
                 print(
@@ -514,10 +516,10 @@ def main(subset_size=.1, greedy=0):
             else:
                 print(
                     f'Saving the results to {folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
-                    f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_cosine')
+                    f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256')
 
                 np.savez(f'{folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
-                         f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_cosine',
+                         f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256',
                          train_loss=train_loss, test_acc=test_acc, train_acc=train_acc, test_loss=test_loss,
                          data_time=data_time, train_time=train_time, grd_time=grd_time, sim_time=sim_time,
                          best_g=best_gs, best_b=best_bs, not_selected=not_selected,
@@ -613,7 +615,13 @@ def train(train_loader, model, criterion, optimizer, epoch, weight=None, RE=1):
         output = model(input_var)
         loss = criterion(output, target_var)
         # loss = (loss).mean()  # (Note)
-        loss = (loss * weight[idx.long()]).mean()  # (Note)
+        # loss = (loss * weight[idx.long()]).mean()  # (Note)
+
+        sel_wt = weight[idx.long()]
+        # pdb.set_trace()
+        norm_sel_wt = sel_wt / sel_wt.sum()
+        loss = (loss * norm_sel_wt).sum()
+
 
         # loss = loss*RE
 
