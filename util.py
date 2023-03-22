@@ -232,7 +232,7 @@ def greedi(X, y, B, part_num, metric, smtk=0, stoch_greedy=False, seed=-1):
     return vals
 
 
-def get_facility_location_submodular_order(S, B, c, smtk=0, no=0, stoch_greedy=0, weights=None):
+def get_facility_location_submodular_order(S, B, c, smtk=0, no=0, stoch_greedy=0, weights=None, e=None, use_loss=False):
     '''
     Args
     - S: np.array, shape [N, N], similarity matrix
@@ -275,22 +275,53 @@ def get_facility_location_submodular_order(S, B, c, smtk=0, no=0, stoch_greedy=0
     order = np.asarray(order, dtype=np.int64)
     sz = np.zeros(B, dtype=np.float64)
 
-    new_order = []
-
-    for i in range(N):
-        # pdb.set_trace()
-        if weights is None:
-            if len(order):
-                sz[np.argmax(S[i, order])] += 1
-                # pdb.set_trace()
-        else:
-            sz[np.argmax(S[i, order])] += weights[i]
-    for j in order:
-        i_list = []
+    if use_loss:
+        new_order = []
+        j_list = order
+        max_i = np.zeros(B)
         for i in range(N):
-            if np.argmax(S[i, order]) == j:
-                i_list.append(i)
-        np.argmax(np.linalg.norm(S[:, i_list], axis = 0))
+            # pdb.set_trace()
+            if weights is None:
+                if len(order):
+                    sz[np.argmax(S[i, order])] += 1
+
+                    # pdb.set_trace()
+                    cur_max = np.linalg.norm(e[i,:])
+
+                    index_array = np.argmax(S[i, order])
+                    mask_array = np.zeros(B, dtype=bool)
+                    mask_array[index_array] = True
+
+                    max_i[(cur_max > max_i) & mask_array] = cur_max
+                    j_list[(cur_max > max_i) & mask_array] = i
+                    # pdb.set_trace()
+            else:
+                sz[np.argmax(S[i, order])] += weights[i]
+        # for J,idx in enumerate(order):
+        #     i_list = []
+        #     for i in range(N):
+        #         if np.argmax(S[i, order]) == J:
+        #             i_list.append(i)
+        #     if len(i_list) == 0:
+        #         i_list.append(idx)
+        #     if i_list:
+        #         sel_s = S[i_list, :]
+        #         sel_norm = np.linalg.norm(sel_s, axis = 1)
+        #         max_norm_idx = np.argmax(sel_norm)
+        #         max_i = i_list[max_norm_idx]
+        #         new_order.append(max_i)
+
+        print("len: ", len(order), len(j_list))
+
+        order = j_list
+
+    else:
+        for i in range(N):
+            if weights is None:
+                sz[np.argmax(S[i, order])] += 1
+            else:
+                sz[np.argmax(S[i, order])] += weights[i]
+
 
     # print('time (sec) for computing facility location:', greedy_time, flush=True)
     collected = gc.collect()
@@ -298,14 +329,14 @@ def get_facility_location_submodular_order(S, B, c, smtk=0, no=0, stoch_greedy=0
     return order, sz, greedy_time, F_val
 
 
-def faciliy_location_order(c, X, y, metric, num_per_class, smtk, no, stoch_greedy, weights=None):
+def faciliy_location_order(c, X, y, metric, num_per_class, smtk, no, stoch_greedy, weights=None, e=None, use_loss=False):
     class_indices = np.where(y == c)[0]
     # print(c)
     # print(class_indices)
     # print(len(class_indices))
     S, S_time = similarity(X[class_indices], metric=metric)
     order, cluster_sz, greedy_time, F_val = get_facility_location_submodular_order(
-        S, num_per_class, c, smtk, no, stoch_greedy, weights)
+        S, num_per_class, c, smtk, no, stoch_greedy, weights, e, use_loss)
     # print("class i order: ", len(class_indices[order]))
     return class_indices[order], cluster_sz, greedy_time, S_time
 
@@ -445,7 +476,7 @@ def save_all_orders_and_weights(folder, X, metric='l2', stoch_greedy=False, y=No
     # return vals
 
 
-def get_orders_and_weights(B, X, metric, smtk, no=0, stoch_greedy=0, y=None, weights=None, equal_num=False, outdir='.'):
+def get_orders_and_weights(B, X, metric, smtk, no=0, stoch_greedy=0, y=None, weights=None, equal_num=False, outdir='.', use_loss=False):
     '''
     Ags
     - X: np.array, shape [N, d]
@@ -493,7 +524,7 @@ def get_orders_and_weights(B, X, metric, smtk, no=0, stoch_greedy=0, y=None, wei
     #     lambda c: faciliy_location_order(c, X, y, metric, num_per_class[c], smtk, stoch_greedy, weights), classes))
     # pool.terminate()
     order_mg_all, cluster_sizes_all, greedy_times, similarity_times = zip(*map(
-        lambda c: faciliy_location_order(c, X, y, metric, num_per_class[c], smtk, no, stoch_greedy, weights), classes))
+        lambda c: faciliy_location_order(c, X, y, metric, num_per_class[c], smtk, no, stoch_greedy, weights, X, use_loss), classes))
 
     print("from all class: ", len(order_mg_all))
     # pdb.set_trace()

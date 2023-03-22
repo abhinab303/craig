@@ -103,7 +103,7 @@ parser.add_argument('--start-subset', '-st', default=0, type=int, metavar='N', h
 parser.add_argument('--save_subset', dest='save_subset', action='store_true', help='save_subset')
 
 TRAIN_NUM = 50000
-CLASS_NUM = 10
+CLASS_NUM = 100
 
 
 def main(subset_size=.1, greedy=0):
@@ -113,6 +113,8 @@ def main(subset_size=.1, greedy=0):
     # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     os.environ["CUDA_VISIBLE_DEVICES"] = '0'
     CUDA_VISIBLE_DEVICES = 0
+
+    USE_LOSS = False
 
     print(f'--------- subset_size: {subset_size}, method: {args.ig}, moment: {args.momentum}, '
           f'lr_schedule: {args.lr_schedule}, greedy: {greedy}, stoch: {args.st_grd}, rs: {args.random_subset_size} ---------------')
@@ -144,7 +146,7 @@ def main(subset_size=.1, greedy=0):
                                      std=[0.229, 0.224, 0.225])
 
     train_loader__ = torch.utils.data.DataLoader(
-        datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+        datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(32, 4),
             transforms.ToTensor(),
@@ -155,7 +157,7 @@ def main(subset_size=.1, greedy=0):
 
     class IndexedDataset(Dataset):
         def __init__(self):
-            self.cifar10 = datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+            self.cifar100 = datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(32, 4),
             transforms.ToTensor(),
@@ -163,12 +165,12 @@ def main(subset_size=.1, greedy=0):
         ]), download=True)
 
         def __getitem__(self, index):
-            data, target = self.cifar10[index]
+            data, target = self.cifar100[index]
             # Your transformations here (or set it in CIFAR10)
             return data, target, index
 
         def __len__(self):
-            return len(self.cifar10)
+            return len(self.cifar100)
 
     indexed_dataset = IndexedDataset()
     indexed_loader = DataLoader(
@@ -177,7 +179,7 @@ def main(subset_size=.1, greedy=0):
         num_workers=args.workers, pin_memory=True)
 
     val_loader = torch.utils.data.DataLoader(
-        datasets.CIFAR10(root='./data', train=False, transform=transforms.Compose([
+        datasets.CIFAR100(root='./data', train=False, transform=transforms.Compose([
             transforms.ToTensor(),
             normalize,
         ])),
@@ -185,7 +187,7 @@ def main(subset_size=.1, greedy=0):
         num_workers=args.workers, pin_memory=True)
 
     train_val_loader = torch.utils.data.DataLoader(
-        datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+        datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
             transforms.ToTensor(),
             normalize,
         ])),
@@ -339,7 +341,7 @@ def main(subset_size=.1, greedy=0):
                 else:  # Note: warm start
                     if args.cluster_features:
                         print(f'Selecting {B} elements greedily from features')
-                        data = datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+                        data = datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
                             transforms.RandomHorizontalFlip(),
                             transforms.RandomCrop(32, 4),
                             transforms.ToTensor(),
@@ -354,7 +356,7 @@ def main(subset_size=.1, greedy=0):
                     fl_labels = np.zeros(np.shape(labels), dtype=int) if args.cluster_all else labels
                     subset, subset_weight, _, _, ordering_time, similarity_time = util.get_orders_and_weights(
                         B, preds, 'euclidean', smtk=args.smtk, no=0, y=fl_labels, stoch_greedy=args.st_grd,
-                        equal_num=True)
+                        equal_num=True, use_loss=USE_LOSS)
 
                     weights = np.zeros(len(indexed_loader.dataset))
                     # weights[subset] = np.ones(len(subset))
@@ -500,7 +502,7 @@ def main(subset_size=.1, greedy=0):
             grd += f'_warm' if args.warm_start > 0 else ''
             grd += f'_feature' if args.cluster_features else ''
             grd += f'_ca' if args.cluster_all else ''
-            folder = f'./tmp/cifar10_batch_mean'
+            folder = f'./tmp/cifar100'
 
             if args.save_subset:
                 print(
