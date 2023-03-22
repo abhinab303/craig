@@ -25,6 +25,7 @@ from GradualWarmupScheduler import *
 import random
 
 import gc
+from sklearn.manifold import TSNE
 
 torch.cuda.empty_cache()
 gc.collect()
@@ -33,13 +34,11 @@ torch.manual_seed(0)
 random.seed(0)
 np.random.seed(0)
 
-
-
 # ignore all future warnings
 simplefilter(action='ignore', category=FutureWarning)
 np.seterr(all='ignore')
 
-# CUDA_VISIBLE_DEVICES = 0
+CUDA_VISIBLE_DEVICES = 0
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   # see issue #152
 
 model_names = sorted(name for name in resnet.__dict__
@@ -195,6 +194,21 @@ def main(subset_size=.1, greedy=0):
     train_criterion = nn.CrossEntropyLoss(reduction='none').cuda()  # (Note)
     val_criterion = nn.CrossEntropyLoss().cuda()
 
+    example_list = []
+    label_list = []
+    idx_list = []
+    batch_list = [x for x in indexed_loader]
+    for b in batch_list:
+        for i in range(len(b[1])):
+            example_list.append(torch.flatten(b[0][i]).numpy())
+            label_list.append(b[1][i])
+            idx_list.append(b[2][i])
+
+    example_list = np.array(example_list)
+    pdb.set_trace()
+
+    X = TSNE(n_components=2, learning_rate='auto', init='random', perplexity=3).fit_transform(example_list)
+
     if args.half:
         model.half()
         train_criterion.half()
@@ -287,29 +301,6 @@ def main(subset_size=.1, greedy=0):
             validate(val_loader, model, val_criterion)
             return
 
-        train_loss_list = []
-        test_loss_list = []
-        test_acc_list = []
-        train_acc_list = []
-
-        first_gradient_list = []
-        first_gradient_list_wt = []
-        first_gradient_list_wt_full = []
-        first_gradient_list_wt_scaled = []
-        first_gradient_list_wt_rel = []
-        first_gradient_list_wt_rel_full = []
-        first_gradient_list_norm_all = []
-        first_gradient_list_norm_full = []
-        first_gradient_list_norm_sub = []
-
-        loss_error_list = []
-        loss_error_list_wt = []
-        loss_error_list_wt_scaled = []
-        loss_error_list_wt_rel = []
-        loss_error_list_all = []
-        loss_error_list_sub = []
-
-        gradient_storage = []
         weight = None
         subset = np.array([x for x in range(TRAIN_NUM)])
         subset_weight = np.ones(TRAIN_NUM)
@@ -327,7 +318,6 @@ def main(subset_size=.1, greedy=0):
 
             elif subset_size < 1 and \
                     (epoch % (args.lag + args.start_subset) == 0 or epoch == args.start_subset):
-            # elif epoch < 3:
                 B = int(subset_size * TRAIN_NUM)
                 if greedy == 0:
                     # order = np.arange(0, TRAIN_NUM)
@@ -357,11 +347,7 @@ def main(subset_size=.1, greedy=0):
                         equal_num=True)
 
                     weights = np.zeros(len(indexed_loader.dataset))
-                    # weights[subset] = np.ones(len(subset))
-                    # scaled_weight = subset_weight
-                    # scaled_weight = subset_weight / np.sum(subset_weight)
-                    scaled_weight = subset_weight * len(subset_weight) / np.sum(subset_weight)
-                    # scaled_weight = subset_weight * 0.01
+                    scaled_weight = subset_weight  * len(subset_weight) / np.sum(subset_weight)
                     if args.save_subset:
                         selected_ndx[run, epoch], selected_wgt[run, epoch] = subset, scaled_weight
 
@@ -385,71 +371,6 @@ def main(subset_size=.1, greedy=0):
                 not_selected[run, epoch] = not_selected[run, epoch - 1]
                 print(f'{not_selected[run, epoch]:.3f} % not selected yet')
                 #############################
-
-            # gp, gt, gl = get_gradients(indexed_loader, model, train_criterion)
-            #
-            # g_full = np.load("./result_com_full_model/cifar10_all_data_0.npz")
-            # last_epoch_g_full = g_full["all_gradient"][0]
-            #
-            # first_gradient_all = gp - np.eye(CLASS_NUM)[gt]
-            # first_gradient_ss = first_gradient_all[subset]
-            #
-            # gradient_storage.append(first_gradient_all.sum(axis=0))
-            #
-            # first_gradient_ss_wt = first_gradient_ss * np.tile(subset_weight, (CLASS_NUM, 1)).T
-            # first_gradient_ss_wt_scaled = first_gradient_ss * np.tile(scaled_weight, (CLASS_NUM, 1)).T
-            #
-            # first_gradient_error = first_gradient_all.sum(axis=0) - first_gradient_ss.sum(axis=0)
-            # first_gradient_error_wt = first_gradient_all.sum(axis=0) - first_gradient_ss_wt.sum(axis=0)
-            # first_gradient_error_wt_full = last_epoch_g_full - first_gradient_ss_wt.sum(axis=0)
-            # first_gradient_error_wt_scaled = first_gradient_all.sum(axis=0) - first_gradient_ss_wt_scaled.sum(axis=0)
-            #
-            # first_gradient_norm = np.linalg.norm(first_gradient_error)
-            # first_gradient_norm_wt = np.linalg.norm(first_gradient_error_wt)
-            # first_gradient_norm_wt_full = np.linalg.norm(first_gradient_error_wt_full)
-            # first_gradient_norm_wt_scaled = np.linalg.norm(first_gradient_error_wt_scaled)
-            # first_gradient_norm_wt_rel = np.linalg.norm(first_gradient_error_wt) / np.linalg.norm(
-            #     first_gradient_all.sum(axis=0))
-            # first_gradient_norm_wt_rel_full = first_gradient_norm_wt_full / np.linalg.norm(last_epoch_g_full)
-            #
-            # first_gradient_norm_all = np.linalg.norm(first_gradient_all.sum(axis=0))
-            # first_gradient_norm_full = np.linalg.norm(last_epoch_g_full)
-            # first_gradient_norm_sub = np.linalg.norm(first_gradient_ss_wt.sum(axis=0))
-            # first_gradient_norm_sub_u = np.linalg.norm(first_gradient_ss_wt.sum(axis=0))
-            #
-            # loss_all = gl
-            # loss_ss = gl[subset]
-            # loss_ss_wt = loss_ss * subset_weight
-            # loss_ss_wt_scaled = loss_ss * scaled_weight
-            #
-            # loss_error = gl.sum() - loss_ss.sum()
-            # loss_error_wt = gl.sum() - loss_ss_wt.sum()
-            # loss_error_wt_scaled = gl.sum() - loss_ss_wt_scaled.sum()
-            # loss_error_wt_rel = loss_error_wt / gl.sum()
-            # loss_error_all = gl.sum()
-            # loss_error_sub = loss_ss_wt.sum()
-            # loss_error_sub_u = loss_ss.sum()
-            #
-            # loss_error_norm = np.linalg.norm(loss_error)
-            # loss_error_norm_wt = np.linalg.norm(loss_error_wt)
-            # loss_error_norm_wt_scaled = np.linalg.norm(loss_error_wt_scaled)
-            #
-            # first_gradient_list.append(first_gradient_norm)
-            # first_gradient_list_wt.append(first_gradient_norm_wt)
-            # first_gradient_list_wt_full.append(first_gradient_norm_wt_full)
-            # first_gradient_list_wt_scaled.append(first_gradient_norm_wt_scaled)
-            # first_gradient_list_wt_rel.append(first_gradient_norm_wt_rel)
-            # first_gradient_list_wt_rel_full.append(first_gradient_norm_wt_rel_full)
-            # first_gradient_list_norm_all.append(first_gradient_norm_all)
-            # first_gradient_list_norm_full.append(first_gradient_norm_full)
-            # first_gradient_list_norm_sub.append(first_gradient_norm_sub)
-            #
-            # loss_error_list.append(loss_error)
-            # loss_error_list_wt.append(loss_error_wt)
-            # loss_error_list_wt_scaled.append(loss_error_wt_scaled)
-            # loss_error_list_wt_rel.append(loss_error_wt_rel)
-            # loss_error_list_all.append(loss_error_all)
-            # loss_error_list_sub.append(loss_error_sub)
 
             data_time[run, epoch], train_time[run, epoch] = train(
                 train_loader, model, train_criterion, optimizer, epoch, weight,
@@ -483,11 +404,6 @@ def main(subset_size=.1, greedy=0):
                     'best_prec1': best_prec1,
                 }, is_best, filename=os.path.join(args.save_dir, 'checkpoint.th'))
 
-            # save_checkpoint({
-            # 'state_dict': model.state_dict(),
-            # 'best_prec1': best_prec1,
-            # }, is_best, filename=os.path.join(args.save_dir, 'model.th'))
-
             print(f'run: {run}, subset_size: {subset_size}, epoch: {epoch}, prec1: {prec1}, loss: {tl:.3f}, '
                   f'g: {lr:.3f}, b: {b:.3f}, '
                   f'best_prec1_gb: {best_prec1}, best_loss_gb: {best_loss:.3f}, best_run: {best_run};  '
@@ -516,66 +432,14 @@ def main(subset_size=.1, greedy=0):
             else:
                 print(
                     f'Saving the results to {folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
-                    f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_baseline_b256')
+                    f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256')
 
                 np.savez(f'{folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
-                         f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_baseline_b256',
+                         f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256',
                          train_loss=train_loss, test_acc=test_acc, train_acc=train_acc, test_loss=test_loss,
                          data_time=data_time, train_time=train_time, grd_time=grd_time, sim_time=sim_time,
                          best_g=best_gs, best_b=best_bs, not_selected=not_selected,
                          times_selected=times_selected)
-
-            # train_loss_list.append(tl)
-            # test_loss_list.append(loss)
-            # test_acc_list.append(prec1)
-            # train_acc_list.append(ta)
-
-            # loss_sum = []
-
-
-
-            # pdb.set_trace()
-
-            # pdb.set_trace()
-
-            # to_csv = {
-            #     "Train Loss": train_loss_list,
-            #     "Test Loss": test_loss_list,
-            #     "Test Accuracy": test_acc_list,
-            #     "Train Accuracy": train_acc_list,
-            #
-            #     "first_gradient_norm": first_gradient_list,
-            #     "first_gradient_norm_wt": first_gradient_list_wt,
-            #     "first_gradient_norm_wt_full": first_gradient_list_wt_full,
-            #     "first_gradient_norm_wt_scaled": first_gradient_list_wt_scaled,
-            #     "first_gradient_norm_wt_rel": first_gradient_list_wt_rel,
-            #     "first_gradient_norm_wt_rel_full": first_gradient_list_wt_rel_full,
-            #     "first_gradient_norm_all": first_gradient_list_norm_all,
-            #     "first_gradient_norm_full": first_gradient_list_norm_full,
-            #     "first_gradient_norm_sub": first_gradient_list_norm_sub,
-            #
-            #     "loss_error": loss_error_list,
-            #     "loss_error_wt": loss_error_list_wt,
-            #     "loss_error_wt_scaled": loss_error_list_wt_scaled,
-            #     "loss_error_wt_rel": loss_error_list_wt_rel,
-            #     "loss_error_all": loss_error_list_all,
-            #     "loss_error_sub": loss_error_list_sub,
-            # }
-
-            # pdb.set_trace()
-
-            # pdb.set_trace()
-
-            # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar10_unscale_loss.csv", sep='\t')
-            # pd.DataFrame(to_csv).to_csv("./cifar10_10b_512bs_normal.csv", sep='\t')
-            # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar100_org_2.csv", sep='\t')
-            # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/with_variance_cur7_seed0.csv", sep='\t')\
-            # np.savez("/home/aa7514/PycharmProjects/craig/cifar10_100b_512bs_ss", all_gradient=gradient_storage,
-            # np.savez("/home/aa7514/PycharmProjects/craig/cifar10_unscale_loss", all_gradient=gradient_storage,
-            #          subsets=subset, weights=weight.cpu())
-
-
-
 
     print(np.max(test_acc, 1), np.mean(np.max(test_acc, 1)),
           np.min(not_selected, 1), np.mean(np.min(not_selected, 1)))
@@ -616,13 +480,6 @@ def train(train_loader, model, criterion, optimizer, epoch, weight=None, RE=1):
         loss = criterion(output, target_var)
         # loss = (loss).mean()  # (Note)
         loss = (loss * weight[idx.long()]).mean()  # (Note)
-
-        # sel_wt = weight[idx.long()]
-        # # pdb.set_trace()
-        # norm_sel_wt = sel_wt / sel_wt.sum()
-        # loss = (loss * norm_sel_wt).sum()
-
-
         # loss = loss*RE
 
         # compute gradient and do SGD step

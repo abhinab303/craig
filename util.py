@@ -274,13 +274,24 @@ def get_facility_location_submodular_order(S, B, c, smtk=0, no=0, stoch_greedy=0
 
     order = np.asarray(order, dtype=np.int64)
     sz = np.zeros(B, dtype=np.float64)
+
+    new_order = []
+
     for i in range(N):
         # pdb.set_trace()
         if weights is None:
             if len(order):
                 sz[np.argmax(S[i, order])] += 1
+                # pdb.set_trace()
         else:
             sz[np.argmax(S[i, order])] += weights[i]
+    for j in order:
+        i_list = []
+        for i in range(N):
+            if np.argmax(S[i, order]) == j:
+                i_list.append(i)
+        np.argmax(np.linalg.norm(S[:, i_list], axis = 0))
+
     # print('time (sec) for computing facility location:', greedy_time, flush=True)
     collected = gc.collect()
     # print("order: ", len(order))
