@@ -1,7 +1,7 @@
 #!/bin/bash
-base_job_name="ctl"
+base_job_name="wrmch"
 job_file="the_job.sh"
-identifier_name="ctl"
+identifier_name="wrmch"
 dir="op_"$identifier_name
 mkdir -p $dir
 

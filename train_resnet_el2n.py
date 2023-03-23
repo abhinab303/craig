@@ -105,7 +105,7 @@ parser.add_argument('-run', default=0, type=int, help='run number for rc', dest=
 parser.add_argument('-ul', dest='use_loss', action='store_true', default=False, help='greedy ordering')
 
 TRAIN_NUM = 50000
-CLASS_NUM = 10
+CLASS_NUM = 100
 
 
 def main(subset_size=.1, greedy=0):
@@ -149,7 +149,7 @@ def main(subset_size=.1, greedy=0):
                                      std=[0.229, 0.224, 0.225])
 
     train_loader__ = torch.utils.data.DataLoader(
-        datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+        datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(32, 4),
             transforms.ToTensor(),
@@ -160,7 +160,7 @@ def main(subset_size=.1, greedy=0):
 
     class IndexedDataset(Dataset):
         def __init__(self):
-            self.cifar10 = datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+            self.cifar100 = datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(32, 4),
             transforms.ToTensor(),
@@ -168,12 +168,12 @@ def main(subset_size=.1, greedy=0):
         ]), download=True)
 
         def __getitem__(self, index):
-            data, target = self.cifar10[index]
+            data, target = self.cifar100[index]
             # Your transformations here (or set it in CIFAR10)
             return data, target, index
 
         def __len__(self):
-            return len(self.cifar10)
+            return len(self.cifar100)
 
     indexed_dataset = IndexedDataset()
     indexed_loader = DataLoader(
@@ -182,7 +182,7 @@ def main(subset_size=.1, greedy=0):
         num_workers=args.workers, pin_memory=True)
 
     val_loader = torch.utils.data.DataLoader(
-        datasets.CIFAR10(root='./data', train=False, transform=transforms.Compose([
+        datasets.CIFAR100(root='./data', train=False, transform=transforms.Compose([
             transforms.ToTensor(),
             normalize,
         ])),
@@ -190,7 +190,7 @@ def main(subset_size=.1, greedy=0):
         num_workers=args.workers, pin_memory=True)
 
     train_val_loader = torch.utils.data.DataLoader(
-        datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+        datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
             transforms.ToTensor(),
             normalize,
         ])),
@@ -316,12 +316,14 @@ def main(subset_size=.1, greedy=0):
                 preds -= np.eye(CLASS_NUM)[labels]
 
                 fl_labels = np.zeros(np.shape(labels), dtype=int) if args.cluster_all else labels
-                subset, subset_weight, _, _, ordering_time, similarity_time = util.get_orders_and_weights(
-                    B, preds, 'euclidean', smtk=args.smtk, no=0, y=fl_labels, stoch_greedy=args.st_grd,
-                    equal_num=True, use_loss=USE_LOSS)
+                # subset, subset_weight, _, _, ordering_time, similarity_time = util.get_orders_and_weights(
+                #     B, preds, 'euclidean', smtk=args.smtk, no=0, y=fl_labels, stoch_greedy=args.st_grd,
+                #     equal_num=True, use_loss=USE_LOSS)
+                
+                ordering_time = 0
+                similarity_time = 0
 
                 el2n = np.linalg.norm(preds, axis=1)
-
 
                 classes = np.unique(labels)
                 C = len(classes)  # number of classes
@@ -330,21 +332,28 @@ def main(subset_size=.1, greedy=0):
                 for c in classes:
                     B_cur = num_per_class[c]
                     class_indices_all = np.where(labels == c)[0]
-                    
-                    pdb.set_trace()
+                    sort_score = np.argsort(el2n[class_indices_all])
+                    # warm start:
+                    if epoch < 20:
+                        subset_class = np.random.choice(sort_score, size=B_cur, replace=False)
+                    else:
+                        subset_class = sort_score[-B_cur:]
+                    per_class_subset.extend(list(subset_class))
 
+                subset = np.array(per_class_subset)
 
-                    class_indices_sub = np.intersect1d(class_indices_all, subset)
+                print("Subset Size: ", subset.shape)
+
                 weights = np.zeros(len(indexed_loader.dataset))
                 # weights[subset] = np.ones(len(subset))
                 # scaled_weight = subset_weight
                 # scaled_weight = subset_weight / np.sum(subset_weight)
-                scaled_weight = subset_weight * len(subset_weight) / np.sum(subset_weight)
+                # scaled_weight = subset_weight * len(subset_weight) / np.sum(subset_weight)
                 # scaled_weight = subset_weight * 0.01
                 if args.save_subset:
                     selected_ndx[run, epoch], selected_wgt[run, epoch] = subset, scaled_weight
 
-                weights[subset] = scaled_weight
+                # weights[subset] = scaled_weight
                 weight = torch.from_numpy(weights).float().cuda()
                 # weight = torch.tensor(weights).cuda()
                 # np.random.shuffle(subset)
@@ -364,6 +373,8 @@ def main(subset_size=.1, greedy=0):
                 not_selected[run, epoch] = not_selected[run, epoch - 1]
                 print(f'{not_selected[run, epoch]:.3f} % not selected yet')
                 #############################
+
+            weight = None
 
             data_time[run, epoch], train_time[run, epoch] = train(
                 train_loader, model, train_criterion, optimizer, epoch, weight,
@@ -414,30 +425,30 @@ def main(subset_size=.1, greedy=0):
             grd += f'_warm' if args.warm_start > 0 else ''
             grd += f'_feature' if args.cluster_features else ''
             grd += f'_ca' if args.cluster_all else ''
-            folder = f'./tmp/cifar10'
+            folder = f'./tmp/cifar100_el2n_warm_start'
 
-            # if args.save_subset:
-            #     print(
-            #         f'Saving the results to {folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
-            #         f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_subset')
+            if args.save_subset:
+                print(
+                    f'Saving the results to {folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
+                    f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_subset')
 
-            #     np.savez(f'{folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
-            #              f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_subset',
-            #              train_loss=train_loss, test_acc=test_acc, train_acc=train_acc, test_loss=test_loss,
-            #              data_time=data_time, train_time=train_time, grd_time=grd_time, sim_time=sim_time,
-            #              best_g=best_gs, best_b=best_bs, not_selected=not_selected, times_selected=times_selected,
-            #              subset=selected_ndx, weights=selected_wgt)
-            # else:
-            #     print(
-            #         f'Saving the results to {folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
-            #         f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}')
+                np.savez(f'{folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
+                         f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_subset',
+                         train_loss=train_loss, test_acc=test_acc, train_acc=train_acc, test_loss=test_loss,
+                         data_time=data_time, train_time=train_time, grd_time=grd_time, sim_time=sim_time,
+                         best_g=best_gs, best_b=best_bs, not_selected=not_selected, times_selected=times_selected,
+                         subset=selected_ndx, weights=selected_wgt)
+            else:
+                print(
+                    f'Saving the results to {folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
+                    f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}')
 
-            #     np.savez(f'{folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
-            #              f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}',
-            #              train_loss=train_loss, test_acc=test_acc, train_acc=train_acc, test_loss=test_loss,
-            #              data_time=data_time, train_time=train_time, grd_time=grd_time, sim_time=sim_time,
-            #              best_g=best_gs, best_b=best_bs, not_selected=not_selected,
-            #              times_selected=times_selected)
+                np.savez(f'{folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
+                         f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}',
+                         train_loss=train_loss, test_acc=test_acc, train_acc=train_acc, test_loss=test_loss,
+                         data_time=data_time, train_time=train_time, grd_time=grd_time, sim_time=sim_time,
+                         best_g=best_gs, best_b=best_bs, not_selected=not_selected,
+                         times_selected=times_selected)
 
             
     print(np.max(test_acc, 1), np.mean(np.max(test_acc, 1)),

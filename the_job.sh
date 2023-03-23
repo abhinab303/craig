@@ -11,4 +11,5 @@
 
 conda activate sn_coreset
 
-python train_resnet.py -s $ss_size -w -b 246 -g --smtk 0 -run $rn -ul
+python train_resnet_el2n.py -s $ss_size -w -b 246 -g --smtk 0 -run $rn
+#python train_resnet.py -s $ss_size -w -b 246 -run $rn
