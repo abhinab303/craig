@@ -375,20 +375,23 @@ def main(subset_size=.1, greedy=0):
                             B_cur = num_per_class[c]
                             class_indices_all = np.where(labels == c)[0]
                             class_indices_sub = np.intersect1d(class_indices_all, subset)
-                            class_indices_rem = np.array(set(class_indices_all) - set(class_indices_sub))
+                            class_indices_rem = np.array(list(set(class_indices_all) - set(class_indices_sub)))
                             sel_wt = np.argsort(all_weight[class_indices_sub])
+
+                            # pdb.set_trace()
+
                             rem_rand =  np.random.choice(class_indices_rem, size=len(class_indices_rem), replace=False)
 
                             len_rand = int(RANDOM * B_cur)
                             len_ss = B_cur - len_rand
 
-                            sel_ss = sel_wt[-len_ss:]
+                            sel_ss = class_indices_sub[sel_wt][-len_ss:]
                             sel_rand = rem_rand[:len_rand]
 
                             final_subset = list(np.concatenate([sel_ss, sel_rand]))
                             per_class_subset.extend(final_subset)
 
-                            pdb.set_trace()
+                            # pdb.set_trace()
 
                             # warm start:
                             # if epoch < 20:
