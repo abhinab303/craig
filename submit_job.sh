@@ -1,7 +1,7 @@
 #!/bin/bash
-base_job_name="c10_craig_w_random_fix"
+base_job_name="c10_craig_w_el2n"
 job_file="the_job.sh"
-identifier_name="c10_craig_w_random_fix"
+identifier_name="c10_craig_w_el2n"
 dir="op_"$identifier_name
 mkdir -p $dir
 

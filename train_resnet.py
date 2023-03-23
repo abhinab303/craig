@@ -323,6 +323,9 @@ def main(subset_size=.1, greedy=0):
         subset = np.array([x for x in range(TRAIN_NUM)])
         subset_weight = np.ones(TRAIN_NUM)
         scaled_weight = np.ones(TRAIN_NUM)
+
+        el2n_list = []
+
         for epoch in range(args.start_epoch, args.epochs):
 
             # train for one epoch
@@ -398,8 +401,21 @@ def main(subset_size=.1, greedy=0):
                         subset_weight = all_weight[subset]
                         print("Subset Len: ", subset.shape)
 
-                    if EL2N > 0 and epoch > 50:
+
+                    if EL2N > 0:
                         el2n = np.linalg.norm(preds, axis=1)
+                        if len(el2n_list) < 5:
+                            el2n_list.append(el2n)
+                        else:
+                            el2n_list.pop(0)
+                            el2n_list.append(el2n)
+
+                        el2n = np.array(el2n_list)
+                        el2n = np.mean(el2n, axis=0)
+                        print("EL2N Shape: ", el2n.shape)
+
+                    if EL2N > 0 and epoch > 30:
+                        # el2n = np.linalg.norm(preds, axis=1)
                         classes = np.unique(labels)
                         C = len(classes)  # number of classes
                         num_per_class = np.int32(np.ceil(np.divide([sum(labels == i) for i in classes], TRAIN_NUM) * B))
@@ -421,7 +437,7 @@ def main(subset_size=.1, greedy=0):
                             len_ss = B_cur - len_el2n
 
                             sel_ss = class_indices_sub[sel_wt][-len_ss:]
-                            sel_rand = class_indices_all[sort_score][-len_rand:]
+                            sel_rand = class_indices_all[sort_score][-len_el2n:]
 
                             final_subset = list(np.concatenate([sel_ss, sel_rand]))
                             per_class_subset.extend(final_subset)
@@ -574,7 +590,7 @@ def main(subset_size=.1, greedy=0):
             grd += f'_warm' if args.warm_start > 0 else ''
             grd += f'_feature' if args.cluster_features else ''
             grd += f'_ca' if args.cluster_all else ''
-            folder = f'./tmp/cifar10_craig_w_rand_fix'
+            folder = f'./tmp/cifar10_craig_w_el2n'
 
             if args.save_subset:
                 print(
@@ -590,10 +606,10 @@ def main(subset_size=.1, greedy=0):
             else:
                 print(
                     f'Saving the results to {folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
-                    f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}_rp{RANDOM}')
+                    f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}_rp{RANDOM}_el{EL2N}')
 
                 np.savez(f'{folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
-                         f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}_rp{RANDOM}',
+                         f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}_rp{RANDOM}_el{EL2N}',
                          train_loss=train_loss, test_acc=test_acc, train_acc=train_acc, test_loss=test_loss,
                          data_time=data_time, train_time=train_time, grd_time=grd_time, sim_time=sim_time,
                          best_g=best_gs, best_b=best_bs, not_selected=not_selected,
