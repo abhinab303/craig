@@ -103,7 +103,8 @@ parser.add_argument('--start-subset', '-st', default=0, type=int, metavar='N', h
 parser.add_argument('--save_subset', dest='save_subset', action='store_true', help='save_subset')
 parser.add_argument('-run', default=0, type=int, help='run number for rc', dest="run")
 parser.add_argument('-ul', dest='use_loss', action='store_true', default=False, help='greedy ordering')
-parser.add_argument('-rand', default=0, type=float, help='run number for rc', dest="rand")
+parser.add_argument('-rand', default=0, type=float, help='random percent', dest="rand")
+parser.add_argument('-el', default=0, type=float, help='EL2N percent', dest="el2n")
 
 TRAIN_NUM = 50000
 CLASS_NUM = 10
@@ -120,6 +121,7 @@ def main(subset_size=.1, greedy=0):
     RUN = args.run
     USE_LOSS = args.use_loss
     RANDOM = args.rand
+    EL2N = args.el2n
 
     print(f'--------- subset_size: {subset_size}, method: {args.ig}, moment: {args.momentum}, '
           f'lr_schedule: {args.lr_schedule}, greedy: {greedy}, stoch: {args.st_grd}, rs: {args.random_subset_size} ---------------')
@@ -368,7 +370,7 @@ def main(subset_size=.1, greedy=0):
                         classes = np.unique(labels)
                         C = len(classes)  # number of classes
                         num_per_class = np.int32(np.ceil(np.divide([sum(labels == i) for i in classes], TRAIN_NUM) * B))
-                        all_weight = np.zeros(TRAIN_NUM)
+                        all_weight = np.ones(TRAIN_NUM)
                         all_weight[subset] = subset_weight
                         per_class_subset = []
                         for c in classes:
@@ -389,18 +391,45 @@ def main(subset_size=.1, greedy=0):
                             sel_rand = rem_rand[:len_rand]
 
                             final_subset = list(np.concatenate([sel_ss, sel_rand]))
+
                             per_class_subset.extend(final_subset)
 
-                            # pdb.set_trace()
-
-                            # warm start:
-                            # if epoch < 20:
-                            #     subset_class = np.random.choice(sort_score, size=B_cur, replace=False)
-                            # else:
-                            #     subset_class = sort_score[-B_cur:]
-                            # per_class_subset.extend(list(subset_class))
                         subset = np.array(per_class_subset)
+                        subset_weight = all_weight[subset]
                         print("Subset Len: ", subset.shape)
+
+                    if EL2N > 0 and epoch > 50:
+                        el2n = np.linalg.norm(preds, axis=1)
+                        classes = np.unique(labels)
+                        C = len(classes)  # number of classes
+                        num_per_class = np.int32(np.ceil(np.divide([sum(labels == i) for i in classes], TRAIN_NUM) * B))
+                        
+                        all_weight = np.ones(TRAIN_NUM)
+                        all_weight[subset] = subset_weight
+                        
+                        per_class_subset = []
+
+                        for c in classes:
+                            B_cur = num_per_class[c]
+                            class_indices_all = np.where(labels == c)[0]
+                            class_indices_sub = np.intersect1d(class_indices_all, subset)
+                            class_indices_rem = np.array(list(set(class_indices_all) - set(class_indices_sub)))
+                            sort_score = np.argsort(el2n[class_indices_all])    # index of class_indices_all not the actual subset.
+                            sel_wt = np.argsort(all_weight[class_indices_sub])
+
+                            len_el2n = int(EL2N * B_cur)
+                            len_ss = B_cur - len_el2n
+
+                            sel_ss = class_indices_sub[sel_wt][-len_ss:]
+                            sel_rand = class_indices_all[sort_score][-len_rand:]
+
+                            final_subset = list(np.concatenate([sel_ss, sel_rand]))
+                            per_class_subset.extend(final_subset)
+
+                        subset = np.array(per_class_subset)
+                        subset_weight = all_weight[subset]
+                        print("Subset Len: ", subset.shape)
+
                     weights = np.zeros(len(indexed_loader.dataset))
                     # weights[subset] = np.ones(len(subset))
                     # scaled_weight = subset_weight
@@ -545,7 +574,7 @@ def main(subset_size=.1, greedy=0):
             grd += f'_warm' if args.warm_start > 0 else ''
             grd += f'_feature' if args.cluster_features else ''
             grd += f'_ca' if args.cluster_all else ''
-            folder = f'./tmp/cifar10_craig_with_random'
+            folder = f'./tmp/cifar10_craig_w_rand_fix'
 
             if args.save_subset:
                 print(
@@ -561,10 +590,10 @@ def main(subset_size=.1, greedy=0):
             else:
                 print(
                     f'Saving the results to {folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
-                    f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}')
+                    f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}_rp{RANDOM}')
 
                 np.savez(f'{folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
-                         f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}',
+                         f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}_rp{RANDOM}',
                          train_loss=train_loss, test_acc=test_acc, train_acc=train_acc, test_loss=test_loss,
                          data_time=data_time, train_time=train_time, grd_time=grd_time, sim_time=sim_time,
                          best_g=best_gs, best_b=best_bs, not_selected=not_selected,

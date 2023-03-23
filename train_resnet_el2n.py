@@ -105,7 +105,7 @@ parser.add_argument('-run', default=0, type=int, help='run number for rc', dest=
 parser.add_argument('-ul', dest='use_loss', action='store_true', default=False, help='greedy ordering')
 
 TRAIN_NUM = 50000
-CLASS_NUM = 100
+CLASS_NUM = 10
 
 
 def main(subset_size=.1, greedy=0):
@@ -149,7 +149,7 @@ def main(subset_size=.1, greedy=0):
                                      std=[0.229, 0.224, 0.225])
 
     train_loader__ = torch.utils.data.DataLoader(
-        datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
+        datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(32, 4),
             transforms.ToTensor(),
@@ -160,7 +160,7 @@ def main(subset_size=.1, greedy=0):
 
     class IndexedDataset(Dataset):
         def __init__(self):
-            self.cifar100 = datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
+            self.cifar10 = datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(32, 4),
             transforms.ToTensor(),
@@ -168,12 +168,12 @@ def main(subset_size=.1, greedy=0):
         ]), download=True)
 
         def __getitem__(self, index):
-            data, target = self.cifar100[index]
+            data, target = self.cifar10[index]
             # Your transformations here (or set it in CIFAR10)
             return data, target, index
 
         def __len__(self):
-            return len(self.cifar100)
+            return len(self.cifar10)
 
     indexed_dataset = IndexedDataset()
     indexed_loader = DataLoader(
@@ -182,7 +182,7 @@ def main(subset_size=.1, greedy=0):
         num_workers=args.workers, pin_memory=True)
 
     val_loader = torch.utils.data.DataLoader(
-        datasets.CIFAR100(root='./data', train=False, transform=transforms.Compose([
+        datasets.CIFAR10(root='./data', train=False, transform=transforms.Compose([
             transforms.ToTensor(),
             normalize,
         ])),
@@ -190,7 +190,7 @@ def main(subset_size=.1, greedy=0):
         num_workers=args.workers, pin_memory=True)
 
     train_val_loader = torch.utils.data.DataLoader(
-        datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
+        datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
             transforms.ToTensor(),
             normalize,
         ])),
@@ -332,12 +332,16 @@ def main(subset_size=.1, greedy=0):
                 for c in classes:
                     B_cur = num_per_class[c]
                     class_indices_all = np.where(labels == c)[0]
-                    sort_score = np.argsort(el2n[class_indices_all])
+                    sort_score = np.argsort(el2n[class_indices_all])    # index of class_indices_all not the actual subset.
                     # warm start:
-                    if epoch < 20:
+                    # if epoch < 30:
+                    if False:
                         subset_class = np.random.choice(sort_score, size=B_cur, replace=False)
+                        subset_class = class_indices_all[subset_class]    # convert the index to actual subset
                     else:
-                        subset_class = sort_score[-B_cur:]
+                        subset_class = sort_score[-B_cur:]      # choose the difficult samples
+                        subset_class = class_indices_all[subset_class]
+                    
                     per_class_subset.extend(list(subset_class))
 
                 subset = np.array(per_class_subset)
@@ -425,7 +429,7 @@ def main(subset_size=.1, greedy=0):
             grd += f'_warm' if args.warm_start > 0 else ''
             grd += f'_feature' if args.cluster_features else ''
             grd += f'_ca' if args.cluster_all else ''
-            folder = f'./tmp/cifar100_el2n_warm_start'
+            folder = f'./tmp/cifar10_el2n_warm_fixed_hs'
 
             if args.save_subset:
                 print(
