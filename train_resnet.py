@@ -401,18 +401,18 @@ def main(subset_size=.1, greedy=0):
                         subset_weight = all_weight[subset]
                         print("Subset Len: ", subset.shape)
 
+                    # For average over last few epochs
+                    # if EL2N > 0:
+                    #     el2n = np.linalg.norm(preds, axis=1)
+                    #     if len(el2n_list) < 5:
+                    #         el2n_list.append(el2n)
+                    #     else:
+                    #         el2n_list.pop(0)
+                    #         el2n_list.append(el2n)
 
-                    if EL2N > 0:
-                        el2n = np.linalg.norm(preds, axis=1)
-                        if len(el2n_list) < 5:
-                            el2n_list.append(el2n)
-                        else:
-                            el2n_list.pop(0)
-                            el2n_list.append(el2n)
-
-                        el2n = np.array(el2n_list)
-                        el2n = np.mean(el2n, axis=0)
-                        print("EL2N Shape: ", el2n.shape)
+                    #     el2n = np.array(el2n_list)
+                    #     el2n = np.mean(el2n, axis=0)
+                    #     print("EL2N Shape: ", el2n.shape)
 
                     if EL2N > 0 and epoch > 30:
                         # el2n = np.linalg.norm(preds, axis=1)

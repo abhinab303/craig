@@ -7,10 +7,10 @@
 #SBATCH -n 1
 #SBATCH -c 1
 #SBATCH --mem=8g
-#SBATCH --gres=gpu:v100:1
+#SBATCH --gres=gpu:p4:1
 
 conda activate sn_coreset
 
 #python train_resnet_el2n.py -s $ss_size -w -b 246 -g --smtk 0 -run $rn
-python train_resnet.py -s $ss_size -w -b 246 -g --smtk 0 -run $rn -el $rp 
+python train_resnet.py -s $ss_size -w -b 246 -g --smtk 0 -run $rn -el $rn
 #python train_resnet.py -s $ss_size -w -b 246 -run $rn -rand $rp

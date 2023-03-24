@@ -14,8 +14,8 @@ out_file=$dir/$job_name.out
 error_file=$dir/$job_name.err
 
 ss_list=(0.1)
-rn_list=(0 1 2)
-random_list=(0.05 0.1 0.5) 
+rn_list=(1)
+random_list=(0.1) 
 
 for ss_size in "${ss_list[@]}";
 do
