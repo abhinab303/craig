@@ -107,7 +107,7 @@ parser.add_argument('-rand', default=0, type=float, help='random percent', dest=
 parser.add_argument('-el', default=0, type=float, help='EL2N percent', dest="el2n")
 
 TRAIN_NUM = 50000
-CLASS_NUM = 10
+CLASS_NUM = 100
 
 
 def main(subset_size=.1, greedy=0):
@@ -153,7 +153,7 @@ def main(subset_size=.1, greedy=0):
                                      std=[0.229, 0.224, 0.225])
 
     train_loader__ = torch.utils.data.DataLoader(
-        datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+        datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(32, 4),
             transforms.ToTensor(),
@@ -164,7 +164,7 @@ def main(subset_size=.1, greedy=0):
 
     class IndexedDataset(Dataset):
         def __init__(self):
-            self.cifar10 = datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+            self.cifar100 = datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(32, 4),
             transforms.ToTensor(),
@@ -172,12 +172,12 @@ def main(subset_size=.1, greedy=0):
         ]), download=True)
 
         def __getitem__(self, index):
-            data, target = self.cifar10[index]
+            data, target = self.cifar100[index]
             # Your transformations here (or set it in CIFAR10)
             return data, target, index
 
         def __len__(self):
-            return len(self.cifar10)
+            return len(self.cifar100)
 
     indexed_dataset = IndexedDataset()
     indexed_loader = DataLoader(
@@ -186,7 +186,7 @@ def main(subset_size=.1, greedy=0):
         num_workers=args.workers, pin_memory=True)
 
     val_loader = torch.utils.data.DataLoader(
-        datasets.CIFAR10(root='./data', train=False, transform=transforms.Compose([
+        datasets.CIFAR100(root='./data', train=False, transform=transforms.Compose([
             transforms.ToTensor(),
             normalize,
         ])),
@@ -194,7 +194,7 @@ def main(subset_size=.1, greedy=0):
         num_workers=args.workers, pin_memory=True)
 
     train_val_loader = torch.utils.data.DataLoader(
-        datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+        datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
             transforms.ToTensor(),
             normalize,
         ])),
@@ -351,7 +351,7 @@ def main(subset_size=.1, greedy=0):
                 else:  # Note: warm start
                     if args.cluster_features:
                         print(f'Selecting {B} elements greedily from features')
-                        data = datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+                        data = datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
                             transforms.RandomHorizontalFlip(),
                             transforms.RandomCrop(32, 4),
                             transforms.ToTensor(),
@@ -402,20 +402,20 @@ def main(subset_size=.1, greedy=0):
                         print("Subset Len: ", subset.shape)
 
                     # For average over last few epochs
-                    # if EL2N > 0:
-                    #     el2n = np.linalg.norm(preds, axis=1)
-                    #     if len(el2n_list) < 5:
-                    #         el2n_list.append(el2n)
-                    #     else:
-                    #         el2n_list.pop(0)
-                    #         el2n_list.append(el2n)
+                    if EL2N > 0:
+                        el2n = np.linalg.norm(preds, axis=1)
+                        if len(el2n_list) < 5:
+                            el2n_list.append(el2n)
+                        else:
+                            el2n_list.pop(0)
+                            el2n_list.append(el2n)
 
-                    #     el2n = np.array(el2n_list)
-                    #     el2n = np.mean(el2n, axis=0)
-                    #     print("EL2N Shape: ", el2n.shape)
+                        el2n = np.array(el2n_list)
+                        el2n = np.mean(el2n, axis=0)
+                        print("EL2N Shape: ", el2n.shape)
 
                     if EL2N > 0 and epoch > 30:
-                        # el2n = np.linalg.norm(preds, axis=1)
+                        el2n = np.linalg.norm(preds, axis=1)
                         classes = np.unique(labels)
                         C = len(classes)  # number of classes
                         num_per_class = np.int32(np.ceil(np.divide([sum(labels == i) for i in classes], TRAIN_NUM) * B))
@@ -590,7 +590,7 @@ def main(subset_size=.1, greedy=0):
             grd += f'_warm' if args.warm_start > 0 else ''
             grd += f'_feature' if args.cluster_features else ''
             grd += f'_ca' if args.cluster_all else ''
-            folder = f'./tmp/cifar10_craig_w_el2n'
+            folder = f'./tmp/cifar100_craig_w_rand'
 
             if args.save_subset:
                 print(
