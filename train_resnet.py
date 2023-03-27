@@ -25,6 +25,7 @@ from GradualWarmupScheduler import *
 import random
 
 import gc
+from pathlib import Path
 
 torch.cuda.empty_cache()
 gc.collect()
@@ -105,9 +106,12 @@ parser.add_argument('-run', default=0, type=int, help='run number for rc', dest=
 parser.add_argument('-ul', dest='use_loss', action='store_true', default=False, help='greedy ordering')
 parser.add_argument('-rand', default=0, type=float, help='random percent', dest="rand")
 parser.add_argument('-el', default=0, type=float, help='EL2N percent', dest="el2n")
+parser.add_argument('-jb', type=str, help='job_name_for_file', dest="job_name")
+parser.add_argument('-bj', type=str, help='base job_name_for_ folder', dest="base_job")
+parser.add_argument('-tau', type=float, default=1.0, help='tau for average', dest="tau")
 
 TRAIN_NUM = 50000
-CLASS_NUM = 100
+CLASS_NUM = 10
 
 
 def main(subset_size=.1, greedy=0):
@@ -122,6 +126,9 @@ def main(subset_size=.1, greedy=0):
     USE_LOSS = args.use_loss
     RANDOM = args.rand
     EL2N = args.el2n
+    JOB_NAME = args.job_name
+    BASE_JOB = args.base_job
+    TAU = args.tau
 
     print(f'--------- subset_size: {subset_size}, method: {args.ig}, moment: {args.momentum}, '
           f'lr_schedule: {args.lr_schedule}, greedy: {greedy}, stoch: {args.st_grd}, rs: {args.random_subset_size} ---------------')
@@ -153,7 +160,7 @@ def main(subset_size=.1, greedy=0):
                                      std=[0.229, 0.224, 0.225])
 
     train_loader__ = torch.utils.data.DataLoader(
-        datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
+        datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(32, 4),
             transforms.ToTensor(),
@@ -164,7 +171,7 @@ def main(subset_size=.1, greedy=0):
 
     class IndexedDataset(Dataset):
         def __init__(self):
-            self.cifar100 = datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
+            self.cifar10 = datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(32, 4),
             transforms.ToTensor(),
@@ -172,12 +179,12 @@ def main(subset_size=.1, greedy=0):
         ]), download=True)
 
         def __getitem__(self, index):
-            data, target = self.cifar100[index]
+            data, target = self.cifar10[index]
             # Your transformations here (or set it in CIFAR10)
             return data, target, index
 
         def __len__(self):
-            return len(self.cifar100)
+            return len(self.cifar10)
 
     indexed_dataset = IndexedDataset()
     indexed_loader = DataLoader(
@@ -186,7 +193,7 @@ def main(subset_size=.1, greedy=0):
         num_workers=args.workers, pin_memory=True)
 
     val_loader = torch.utils.data.DataLoader(
-        datasets.CIFAR100(root='./data', train=False, transform=transforms.Compose([
+        datasets.CIFAR10(root='./data', train=False, transform=transforms.Compose([
             transforms.ToTensor(),
             normalize,
         ])),
@@ -194,7 +201,7 @@ def main(subset_size=.1, greedy=0):
         num_workers=args.workers, pin_memory=True)
 
     train_val_loader = torch.utils.data.DataLoader(
-        datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
+        datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
             transforms.ToTensor(),
             normalize,
         ])),
@@ -351,7 +358,7 @@ def main(subset_size=.1, greedy=0):
                 else:  # Note: warm start
                     if args.cluster_features:
                         print(f'Selecting {B} elements greedily from features')
-                        data = datasets.CIFAR100(root='./data', train=True, transform=transforms.Compose([
+                        data = datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
                             transforms.RandomHorizontalFlip(),
                             transforms.RandomCrop(32, 4),
                             transforms.ToTensor(),
@@ -590,7 +597,12 @@ def main(subset_size=.1, greedy=0):
             grd += f'_warm' if args.warm_start > 0 else ''
             grd += f'_feature' if args.cluster_features else ''
             grd += f'_ca' if args.cluster_all else ''
-            folder = f'./tmp/cifar100_craig_w_rand'
+            base_dir = f"./tmp/{BASE_JOB}"
+
+            path = Path(base_dir)
+            path.mkdir(parents=True, exist_ok=True)
+
+            folder = f'{base_dir}/{JOB_NAME}'
 
             if args.save_subset:
                 print(
@@ -608,7 +620,7 @@ def main(subset_size=.1, greedy=0):
                     f'Saving the results to {folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
                     f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}_rp{RANDOM}_el{EL2N}')
 
-                np.savez(f'{folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
+                np.savez(f'{folder}_b128_{RUN}'
                          f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}_rp{RANDOM}_el{EL2N}',
                          train_loss=train_loss, test_acc=test_acc, train_acc=train_acc, test_loss=test_loss,
                          data_time=data_time, train_time=train_time, grd_time=grd_time, sim_time=sim_time,

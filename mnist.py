@@ -18,16 +18,16 @@ Y_train = np_utils.to_categorical(Y_train, num_classes)
 Y_test = np_utils.to_categorical(Y_test, num_classes)
 
 batch_size = 32
-# subset, random = False, False  # all
-subset, random = True, False  # greedy
+subset, random = False, False  # all
+# subset, random = True, False  # greedy
 # subset, random = True, True  # random
-subset_size = .4 if subset else 1.0
-epochs = 15
+subset_size = .5 if subset else 1.0
+epochs = 30
 reg = 1e-4
 runs = 5
 save_subset = False
 
-folder = f'/tmp/mnist'
+folder = f'./tmp/mnist_30E'
 
 
 model = Sequential()

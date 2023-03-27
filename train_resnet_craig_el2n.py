@@ -23,9 +23,9 @@ from warnings import simplefilter
 from GradualWarmupScheduler import *
 
 import random
-from pathlib import Path
 
 import gc
+from pathlib import Path
 
 torch.cuda.empty_cache()
 gc.collect()
@@ -104,9 +104,12 @@ parser.add_argument('--start-subset', '-st', default=0, type=int, metavar='N', h
 parser.add_argument('--save_subset', dest='save_subset', action='store_true', help='save_subset')
 parser.add_argument('-run', default=0, type=int, help='run number for rc', dest="run")
 parser.add_argument('-ul', dest='use_loss', action='store_true', default=False, help='greedy ordering')
+parser.add_argument('-rand', default=0, type=float, help='random percent', dest="rand")
+parser.add_argument('-el', default=0, type=float, help='EL2N percent', dest="el2n")
 parser.add_argument('-jb', type=str, help='job_name_for_file', dest="job_name")
 parser.add_argument('-bj', type=str, help='base job_name_for_ folder', dest="base_job")
 parser.add_argument('-tau', type=float, default=1.0, help='tau for average', dest="tau")
+parser.add_argument('-lam', type=float, default=1.0, help='lambda for average', dest="lamb")
 
 TRAIN_NUM = 50000
 CLASS_NUM = 10
@@ -122,9 +125,12 @@ def main(subset_size=.1, greedy=0):
 
     RUN = args.run
     USE_LOSS = args.use_loss
+    RANDOM = args.rand
+    EL2N = args.el2n
     JOB_NAME = args.job_name
     BASE_JOB = args.base_job
     TAU = args.tau
+    LAMBDA = args.lamb
 
     print(f'--------- subset_size: {subset_size}, method: {args.ig}, moment: {args.momentum}, '
           f'lr_schedule: {args.lr_schedule}, greedy: {greedy}, stoch: {args.st_grd}, rs: {args.random_subset_size} ---------------')
@@ -299,11 +305,35 @@ def main(subset_size=.1, greedy=0):
             validate(val_loader, model, val_criterion)
             return
 
+        train_loss_list = []
+        test_loss_list = []
+        test_acc_list = []
+        train_acc_list = []
+
+        first_gradient_list = []
+        first_gradient_list_wt = []
+        first_gradient_list_wt_full = []
+        first_gradient_list_wt_scaled = []
+        first_gradient_list_wt_rel = []
+        first_gradient_list_wt_rel_full = []
+        first_gradient_list_norm_all = []
+        first_gradient_list_norm_full = []
+        first_gradient_list_norm_sub = []
+
+        loss_error_list = []
+        loss_error_list_wt = []
+        loss_error_list_wt_scaled = []
+        loss_error_list_wt_rel = []
+        loss_error_list_all = []
+        loss_error_list_sub = []
+
         gradient_storage = []
         weight = None
         subset = np.array([x for x in range(TRAIN_NUM)])
         subset_weight = np.ones(TRAIN_NUM)
         scaled_weight = np.ones(TRAIN_NUM)
+
+        el2n_list = []
 
         last_score = None
 
@@ -320,66 +350,97 @@ def main(subset_size=.1, greedy=0):
 
             elif subset_size < 1 and \
                     (epoch % (args.lag + args.start_subset) == 0 or epoch == args.start_subset):
+            # elif epoch < 3:
                 B = int(subset_size * TRAIN_NUM)
-                
-                preds, labels = predictions(indexed_loader, model)
-                preds -= np.eye(CLASS_NUM)[labels]
-
-                fl_labels = np.zeros(np.shape(labels), dtype=int) if args.cluster_all else labels
-                # subset, subset_weight, _, _, ordering_time, similarity_time = util.get_orders_and_weights(
-                #     B, preds, 'euclidean', smtk=args.smtk, no=0, y=fl_labels, stoch_greedy=args.st_grd,
-                #     equal_num=True, use_loss=USE_LOSS)
-                
-                ordering_time = 0
-                similarity_time = 0
-
-                el2n_cur = np.linalg.norm(preds, axis=1)
-
-                # create the average of the scores:
-                if epoch < 1:
-                    el2n = el2n_cur
-                else:
-                    el2n = TAU * el2n_cur + (1 - TAU) * last_score
-                last_score = el2n
-
-                classes = np.unique(labels)
-                C = len(classes)  # number of classes
-                num_per_class = np.int32(np.ceil(np.divide([sum(labels == i) for i in classes], TRAIN_NUM) * B))
-                per_class_subset = []
-                for c in classes:
-                    B_cur = num_per_class[c]
-                    class_indices_all = np.where(labels == c)[0]
-                    sort_score = np.argsort(el2n[class_indices_all])    # index of class_indices_all not the actual subset.
-                    # warm start:
-                    # if epoch < 30:
-                    if False:
-                        subset_class = np.random.choice(sort_score, size=B_cur, replace=False)
-                        subset_class = class_indices_all[subset_class]    # convert the index to actual subset
+                if greedy == 0:
+                    # order = np.arange(0, TRAIN_NUM)
+                    np.random.shuffle(order)
+                    subset = order[:B]
+                    weights = np.zeros(len(indexed_loader.dataset))
+                    weights[subset] = np.ones(B)
+                    print(f'Selecting {B} element from the pre-selected random subset of size: {len(subset)}')
+                else:  # Note: warm start
+                    if args.cluster_features:
+                        print(f'Selecting {B} elements greedily from features')
+                        data = datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+                            transforms.RandomHorizontalFlip(),
+                            transforms.RandomCrop(32, 4),
+                            transforms.ToTensor(),
+                            normalize,
+                        ]), download=True)
+                        preds, labels = np.reshape(data.data, (len(data.targets), -1)), data.targets
                     else:
-                        subset_class = sort_score[-B_cur:]      # choose the difficult samples
-                        subset_class = class_indices_all[subset_class]
+                        print(f'Selecting {B} elements greedily from predictions')
+                        preds, labels = predictions(indexed_loader, model)
+                        preds -= np.eye(CLASS_NUM)[labels]
+
+                    fl_labels = np.zeros(np.shape(labels), dtype=int) if args.cluster_all else labels
+                    subset, subset_weight, _, _, ordering_time, similarity_time = util.get_orders_and_weights(
+                        B, preds, 'euclidean', smtk=args.smtk, no=0, y=fl_labels, stoch_greedy=args.st_grd,
+                        equal_num=True, use_loss=USE_LOSS)
+
+                    el2n_cur = np.linalg.norm(preds, axis=1)
+
+                    # create the average of the scores:
+                    if epoch < 1:
+                        el2n = el2n_cur
+                    else:
+                        el2n = TAU * el2n_cur + (1 - TAU) * last_score
+                    last_score = el2n
+
+
+                    classes = np.unique(labels)
+                    C = len(classes)  # number of classes
+                    num_per_class = np.int32(np.ceil(np.divide([sum(labels == i) for i in classes], TRAIN_NUM) * B))
                     
-                    per_class_subset.extend(list(subset_class))
+                    all_weight = np.ones(TRAIN_NUM)
+                    all_weight[subset] = subset_weight
+                    
+                    per_class_subset = []
 
-                subset = np.array(per_class_subset)
+                    for c in classes:
+                        B_cur = num_per_class[c]
+                        class_indices_all = np.where(labels == c)[0]
+                        class_indices_sub = np.intersect1d(class_indices_all, subset)
+                        class_indices_rem = np.array(list(set(class_indices_all) - set(class_indices_sub)))
+                        # sort_score_idx = np.argsort(el2n[class_indices_all])    # index of class_indices_all not the actual subset.
+                        # sel_wt = np.argsort(all_weight[class_indices_sub])
+                        # sel_wt_idx = np.argsort(all_weight[class_indices_all])
 
-                print("Subset Size: ", subset.shape)
+                        el2n_score = el2n[class_indices_all]
+                        craig_score = all_weight[class_indices_all]
 
-                weights = np.zeros(len(indexed_loader.dataset))
-                # weights[subset] = np.ones(len(subset))
-                # scaled_weight = subset_weight
-                # scaled_weight = subset_weight / np.sum(subset_weight)
-                # scaled_weight = subset_weight * len(subset_weight) / np.sum(subset_weight)
-                # scaled_weight = subset_weight * 0.01
-                if args.save_subset:
-                    selected_ndx[run, epoch], selected_wgt[run, epoch] = subset, scaled_weight
+                        el2n_score_norm = el2n_score / el2n_score.sum()
+                        craig_score_norm = craig_score / craig_score.sum()
+                        t = epoch + 1
+                        wt = np.exp(-t/LAMBDA)
+                        score = craig_score_norm * wt + el2n_score_norm * (1 - wt)
 
-                # weights[subset] = scaled_weight
-                weight = torch.from_numpy(weights).float().cuda()
-                # weight = torch.tensor(weights).cuda()
-                # np.random.shuffle(subset)
-                print(f'FL time: {ordering_time:.3f}, Sim time: {similarity_time:.3f}')
-                grd_time[run, epoch], sim_time[run, epoch] = ordering_time, similarity_time
+                        sel_score = np.argsort(score)     # higher score will be at the end          
+                        # pdb.set_trace()
+                        final_subset = list(class_indices_all[sel_score[-B_cur:]])
+                        per_class_subset.extend(final_subset)
+
+                    subset = np.array(per_class_subset)
+                    subset_weight = all_weight[subset]
+                    print("Subset Len: ", subset.shape)
+
+                    weights = np.zeros(len(indexed_loader.dataset))
+                    # weights[subset] = np.ones(len(subset))
+                    # scaled_weight = subset_weight
+                    # scaled_weight = subset_weight / np.sum(subset_weight)
+                    scaled_weight = subset_weight * len(subset_weight) / np.sum(subset_weight)
+                    # scaled_weight = subset_weight * 0.01
+
+                    if args.save_subset:
+                        selected_ndx[run, epoch], selected_wgt[run, epoch] = subset, scaled_weight
+
+                    weights[subset] = scaled_weight
+                    weight = torch.from_numpy(weights).float().cuda()
+                    # weight = torch.tensor(weights).cuda()
+                    # np.random.shuffle(subset)
+                    print(f'FL time: {ordering_time:.3f}, Sim time: {similarity_time:.3f}')
+                    grd_time[run, epoch], sim_time[run, epoch] = ordering_time, similarity_time
 
                 times_selected[run][subset] += 1
                 print(f'{np.sum(times_selected[run] == 0) / len(times_selected[run]) * 100:.3f} % not selected yet')
@@ -395,7 +456,70 @@ def main(subset_size=.1, greedy=0):
                 print(f'{not_selected[run, epoch]:.3f} % not selected yet')
                 #############################
 
-            weight = None
+            # gp, gt, gl = get_gradients(indexed_loader, model, train_criterion)
+            #
+            # g_full = np.load("./result_com_full_model/cifar10_all_data_0.npz")
+            # last_epoch_g_full = g_full["all_gradient"][0]
+            #
+            # first_gradient_all = gp - np.eye(CLASS_NUM)[gt]
+            # first_gradient_ss = first_gradient_all[subset]
+            #
+            # gradient_storage.append(first_gradient_all.sum(axis=0))
+            #
+            # first_gradient_ss_wt = first_gradient_ss * np.tile(subset_weight, (CLASS_NUM, 1)).T
+            # first_gradient_ss_wt_scaled = first_gradient_ss * np.tile(scaled_weight, (CLASS_NUM, 1)).T
+            #
+            # first_gradient_error = first_gradient_all.sum(axis=0) - first_gradient_ss.sum(axis=0)
+            # first_gradient_error_wt = first_gradient_all.sum(axis=0) - first_gradient_ss_wt.sum(axis=0)
+            # first_gradient_error_wt_full = last_epoch_g_full - first_gradient_ss_wt.sum(axis=0)
+            # first_gradient_error_wt_scaled = first_gradient_all.sum(axis=0) - first_gradient_ss_wt_scaled.sum(axis=0)
+            #
+            # first_gradient_norm = np.linalg.norm(first_gradient_error)
+            # first_gradient_norm_wt = np.linalg.norm(first_gradient_error_wt)
+            # first_gradient_norm_wt_full = np.linalg.norm(first_gradient_error_wt_full)
+            # first_gradient_norm_wt_scaled = np.linalg.norm(first_gradient_error_wt_scaled)
+            # first_gradient_norm_wt_rel = np.linalg.norm(first_gradient_error_wt) / np.linalg.norm(
+            #     first_gradient_all.sum(axis=0))
+            # first_gradient_norm_wt_rel_full = first_gradient_norm_wt_full / np.linalg.norm(last_epoch_g_full)
+            #
+            # first_gradient_norm_all = np.linalg.norm(first_gradient_all.sum(axis=0))
+            # first_gradient_norm_full = np.linalg.norm(last_epoch_g_full)
+            # first_gradient_norm_sub = np.linalg.norm(first_gradient_ss_wt.sum(axis=0))
+            # first_gradient_norm_sub_u = np.linalg.norm(first_gradient_ss_wt.sum(axis=0))
+            #
+            # loss_all = gl
+            # loss_ss = gl[subset]
+            # loss_ss_wt = loss_ss * subset_weight
+            # loss_ss_wt_scaled = loss_ss * scaled_weight
+            #
+            # loss_error = gl.sum() - loss_ss.sum()
+            # loss_error_wt = gl.sum() - loss_ss_wt.sum()
+            # loss_error_wt_scaled = gl.sum() - loss_ss_wt_scaled.sum()
+            # loss_error_wt_rel = loss_error_wt / gl.sum()
+            # loss_error_all = gl.sum()
+            # loss_error_sub = loss_ss_wt.sum()
+            # loss_error_sub_u = loss_ss.sum()
+            #
+            # loss_error_norm = np.linalg.norm(loss_error)
+            # loss_error_norm_wt = np.linalg.norm(loss_error_wt)
+            # loss_error_norm_wt_scaled = np.linalg.norm(loss_error_wt_scaled)
+            #
+            # first_gradient_list.append(first_gradient_norm)
+            # first_gradient_list_wt.append(first_gradient_norm_wt)
+            # first_gradient_list_wt_full.append(first_gradient_norm_wt_full)
+            # first_gradient_list_wt_scaled.append(first_gradient_norm_wt_scaled)
+            # first_gradient_list_wt_rel.append(first_gradient_norm_wt_rel)
+            # first_gradient_list_wt_rel_full.append(first_gradient_norm_wt_rel_full)
+            # first_gradient_list_norm_all.append(first_gradient_norm_all)
+            # first_gradient_list_norm_full.append(first_gradient_norm_full)
+            # first_gradient_list_norm_sub.append(first_gradient_norm_sub)
+            #
+            # loss_error_list.append(loss_error)
+            # loss_error_list_wt.append(loss_error_wt)
+            # loss_error_list_wt_scaled.append(loss_error_wt_scaled)
+            # loss_error_list_wt_rel.append(loss_error_wt_rel)
+            # loss_error_list_all.append(loss_error_all)
+            # loss_error_list_sub.append(loss_error_sub)
 
             data_time[run, epoch], train_time[run, epoch] = train(
                 train_loader, model, train_criterion, optimizer, epoch, weight,
@@ -467,21 +591,66 @@ def main(subset_size=.1, greedy=0):
             else:
                 print(
                     f'Saving the results to {folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
-                    f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}')
+                    f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}_rp{RANDOM}_el{EL2N}')
 
-                # np.savez(f'{folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
-                #          f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}',
-                #          train_loss=train_loss, test_acc=test_acc, train_acc=train_acc, test_loss=test_loss,
-                #          data_time=data_time, train_time=train_time, grd_time=grd_time, sim_time=sim_time,
-                #          best_g=best_gs, best_b=best_bs, not_selected=not_selected,
-                #          times_selected=times_selected)
-                np.savez(f'{folder}_b128_{RUN}_tau{TAU}',
+                np.savez(f'{folder}',
                          train_loss=train_loss, test_acc=test_acc, train_acc=train_acc, test_loss=test_loss,
                          data_time=data_time, train_time=train_time, grd_time=grd_time, sim_time=sim_time,
                          best_g=best_gs, best_b=best_bs, not_selected=not_selected,
                          times_selected=times_selected)
 
-            
+            # train_loss_list.append(tl)
+            # test_loss_list.append(loss)
+            # test_acc_list.append(prec1)
+            # train_acc_list.append(ta)
+
+            # loss_sum = []
+
+
+
+            # pdb.set_trace()
+
+            # pdb.set_trace()
+
+            # to_csv = {
+            #     "Train Loss": train_loss_list,
+            #     "Test Loss": test_loss_list,
+            #     "Test Accuracy": test_acc_list,
+            #     "Train Accuracy": train_acc_list,
+            #
+            #     "first_gradient_norm": first_gradient_list,
+            #     "first_gradient_norm_wt": first_gradient_list_wt,
+            #     "first_gradient_norm_wt_full": first_gradient_list_wt_full,
+            #     "first_gradient_norm_wt_scaled": first_gradient_list_wt_scaled,
+            #     "first_gradient_norm_wt_rel": first_gradient_list_wt_rel,
+            #     "first_gradient_norm_wt_rel_full": first_gradient_list_wt_rel_full,
+            #     "first_gradient_norm_all": first_gradient_list_norm_all,
+            #     "first_gradient_norm_full": first_gradient_list_norm_full,
+            #     "first_gradient_norm_sub": first_gradient_list_norm_sub,
+            #
+            #     "loss_error": loss_error_list,
+            #     "loss_error_wt": loss_error_list_wt,
+            #     "loss_error_wt_scaled": loss_error_list_wt_scaled,
+            #     "loss_error_wt_rel": loss_error_list_wt_rel,
+            #     "loss_error_all": loss_error_list_all,
+            #     "loss_error_sub": loss_error_list_sub,
+            # }
+
+            # pdb.set_trace()
+
+            # pdb.set_trace()
+
+            # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar10_unscale_loss.csv", sep='\t')
+            # pd.DataFrame(to_csv).to_csv("./cifar10_10b_512bs_normal.csv", sep='\t')
+            # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/cifar100_org_2.csv", sep='\t')
+            # pd.DataFrame(to_csv).to_csv("/home/aa7514/PycharmProjects/craig/with_variance_cur7_seed0.csv", sep='\t')\
+            # np.savez("/home/aa7514/PycharmProjects/craig/cifar10_100b_512bs_ss", all_gradient=gradient_storage,
+            # np.savez("/home/aa7514/PycharmProjects/craig/cifar10_unscale_loss", all_gradient=gradient_storage,
+            #          subsets=subset, weights=weight.cpu())
+
+
+
+
     print(np.max(test_acc, 1), np.mean(np.max(test_acc, 1)),
           np.min(not_selected, 1), np.mean(np.min(not_selected, 1)))
 
