@@ -1,9 +1,17 @@
+import pdb
 import numpy as np
 import pandas as pd
 import matplotlib
-import 
+from sklearn.manifold import TSNE
 
-runs = [0, 1, 2]
-taus = [0.1, 0.3, 0.5, 0.7, 0.9]
-subsets = [0.3, 0.5, 0.7]
+stats = np.load("./tmp/mnist_ep10_stats.npz")
+subsets = np.load("./tmp/mnist_ep10_ss.npz")
+indices = subsets['indices']
+weights = subsets['weight']
+feature = stats['features']
+P = stats['logits']
+Y = stats['Y_train']
+
+X = TSNE(n_components=2,n_jobs=4).fit_transform(feature)
+pdb.set_trace()
 
