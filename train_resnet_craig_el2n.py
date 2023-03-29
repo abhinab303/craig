@@ -109,7 +109,7 @@ parser.add_argument('-el', default=0, type=float, help='EL2N percent', dest="el2
 parser.add_argument('-jb', type=str, help='job_name_for_file', dest="job_name")
 parser.add_argument('-bj', type=str, help='base job_name_for_ folder', dest="base_job")
 parser.add_argument('-tau', type=float, default=1.0, help='tau for average', dest="tau")
-parser.add_argument('-lam', type=float, default=1.0, help='lambda for average', dest="lamb")
+parser.add_argument('-lam', type=int, default=1, help='lambda for average', dest="lamb")
 
 TRAIN_NUM = 50000
 CLASS_NUM = 10

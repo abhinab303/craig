@@ -18,6 +18,7 @@ import scipy.spatial
 
 
 from multiprocessing.dummy import Pool as ThreadPool
+# from multiprocessing import Pool as ThreadPool
 from itertools import repeat
 import sklearn
 
@@ -30,6 +31,23 @@ from tensorflow.examples.tutorials.mnist import input_data
 SEED = 100
 EPS = 1E-8
 PLOT_NAMES = ['lr', 'data_loss', 'epoch_loss', 'test_loss']  # 'cluster_compare', 'cosine_compare', 'euclidean_compare'
+
+
+def faciliy_location_order(c, X, y, metric, num_per_class, smtk, no, stoch_greedy, weights=None, e=None, use_loss=False):
+    class_indices = np.where(y == c)[0]
+    # print(c)
+    # print(class_indices)
+    # print(len(class_indices))
+    S, S_time = similarity(X[class_indices], metric=metric)
+    order, cluster_sz, greedy_time, F_val = get_facility_location_submodular_order(
+        S, num_per_class, c, smtk, no, stoch_greedy, weights, e, use_loss)
+    # print("class i order: ", len(class_indices[order]))
+    return class_indices[order], cluster_sz, greedy_time, S_time
+
+
+def child_process(mc):
+    c, X, y, metric, num_per_class, smtk, stoch_greedy, weights = mc
+    return faciliy_location_order(c, X, y, metric, num_per_class[c], smtk, stoch_greedy, weights)
 
 
 def load_dataset(dataset, dataset_dir):
@@ -330,16 +348,7 @@ def get_facility_location_submodular_order(S, B, c, smtk=0, no=0, stoch_greedy=0
     return order, sz, greedy_time, F_val
 
 
-def faciliy_location_order(c, X, y, metric, num_per_class, smtk, no, stoch_greedy, weights=None, e=None, use_loss=False):
-    class_indices = np.where(y == c)[0]
-    # print(c)
-    # print(class_indices)
-    # print(len(class_indices))
-    S, S_time = similarity(X[class_indices], metric=metric)
-    order, cluster_sz, greedy_time, F_val = get_facility_location_submodular_order(
-        S, num_per_class, c, smtk, no, stoch_greedy, weights, e, use_loss)
-    # print("class i order: ", len(class_indices[order]))
-    return class_indices[order], cluster_sz, greedy_time, S_time
+
 
 
 def save_all_orders_and_weights(folder, X, metric='l2', stoch_greedy=False, y=None, equal_num=False, outdir='.'):
@@ -520,12 +529,22 @@ def get_orders_and_weights(B, X, metric, smtk, no=0, stoch_greedy=0, y=None, wei
     # greedy_time_all = np.zeros([C, num_per_class], dtype=np.int64)
     # similarity_time_all = np.zeros([C, num_per_class], dtype=np.int64)
 
-    # pool = ThreadPool(C)
-    # order_mg_all, cluster_sizes_all, greedy_times, similarity_times = zip(*pool.map(
-    #     lambda c: faciliy_location_order(c, X, y, metric, num_per_class[c], smtk, stoch_greedy, weights), classes))
-    # pool.terminate()
-    order_mg_all, cluster_sizes_all, greedy_times, similarity_times = zip(*map(
+    # multi_classes = []
+    # for c in classes:
+    #     multi_classes.append([c, X, y, metric, num_per_class, smtk, stoch_greedy, weights])
+
+    pool = ThreadPool(C)
+    order_mg_all, cluster_sizes_all, greedy_times, similarity_times = zip(*pool.map(
         lambda c: faciliy_location_order(c, X, y, metric, num_per_class[c], smtk, no, stoch_greedy, weights, X, use_loss), classes))
+    pool.terminate()
+
+    # with concurrent.futures.ProcessPoolExecutor() as executor:
+    #     for c in multi_classes:
+    #         child_process(c)
+
+
+    # order_mg_all, cluster_sizes_all, greedy_times, similarity_times = zip(*map(
+    #     lambda c: faciliy_location_order(c, X, y, metric, num_per_class[c], smtk, no, stoch_greedy, weights, X, use_loss), classes))
 
     print("from all class: ", len(order_mg_all))
     # pdb.set_trace()

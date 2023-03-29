@@ -331,6 +331,13 @@ def main(subset_size=.1, greedy=0):
         subset_weight = np.ones(TRAIN_NUM)
         scaled_weight = np.ones(TRAIN_NUM)
 
+        selected_subset_list = []
+        selected_weight_list = []
+        before_tra_ss_prec1_list = []
+        before_tra_ss_loss_list = []
+        after_tra_ss_prec1_list = []
+        after_tra_ss_loss_list = []
+
         el2n_list = []
 
         for epoch in range(args.start_epoch, args.epochs):
@@ -548,10 +555,21 @@ def main(subset_size=.1, greedy=0):
             # loss_error_list_all.append(loss_error_all)
             # loss_error_list_sub.append(loss_error_sub)
 
+            # check the accuracy of the selected subset before training:
+
+            before_tra_ss_prec1, before_tra_ss_loss = validate(train_loader, model, val_criterion)
+
             data_time[run, epoch], train_time[run, epoch] = train(
                 train_loader, model, train_criterion, optimizer, epoch, weight,
                 # RE=first_gradient_norm_wt_rel
             )
+
+            after_tra_ss_prec1, after_tra_ss_loss = validate(train_loader, model, val_criterion)
+
+            before_tra_ss_prec1_list.append(before_tra_ss_prec1)
+            before_tra_ss_loss_list.append(before_tra_ss_loss)
+            after_tra_ss_prec1_list.append(after_tra_ss_prec1)
+            after_tra_ss_loss_list.append(after_tra_ss_loss)
 
             lr_scheduler_f.step()
 
@@ -604,6 +622,10 @@ def main(subset_size=.1, greedy=0):
 
             folder = f'{base_dir}/{JOB_NAME}'
 
+            # save selected subset
+            selected_subset_list.append(subset)
+            selected_weight_list.append(subset_weight)
+
             if args.save_subset:
                 print(
                     f'Saving the results to {folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
@@ -620,12 +642,14 @@ def main(subset_size=.1, greedy=0):
                     f'Saving the results to {folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
                     f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}_rp{RANDOM}_el{EL2N}')
 
-                np.savez(f'{folder}_b128_{RUN}'
+                np.savez(f'{folder}'
                          f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}_rp{RANDOM}_el{EL2N}',
                          train_loss=train_loss, test_acc=test_acc, train_acc=train_acc, test_loss=test_loss,
                          data_time=data_time, train_time=train_time, grd_time=grd_time, sim_time=sim_time,
                          best_g=best_gs, best_b=best_bs, not_selected=not_selected,
-                         times_selected=times_selected)
+                         times_selected=times_selected, subset=selected_subset_list, weight=selected_weight_list,
+                         before_tra_ss_prec1_list=before_tra_ss_prec1_list, before_tra_ss_loss_list=before_tra_ss_loss_list,
+                         after_tra_ss_prec1_list=after_tra_ss_prec1_list, after_tra_ss_loss_list=after_tra_ss_loss_list)
 
             # train_loss_list.append(tl)
             # test_loss_list.append(loss)
@@ -778,7 +802,11 @@ def validate(val_loader, model, criterion):
 
     end = time.time()
     with torch.no_grad():
-        for i, (input, target) in enumerate(val_loader):
+        for i, val_data in enumerate(val_loader):
+
+            target = val_data[1]
+            input = val_data[0]
+
             target = target.cuda()
             input_var = input.cuda()
             target_var = target.cuda()

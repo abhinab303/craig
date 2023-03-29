@@ -1,7 +1,7 @@
 #!/bin/bash
-base_job_name="c10_el2n_craig_wt"
+base_job_name="c10_grid_50b"
 job_file="the_job.sh"
-identifier_name="c10_el2n_craig_wt"
+identifier_name="c10_grid_50b"
 dir="rc_out/op_"$identifier_name
 mkdir -p $dir
 
@@ -13,27 +13,37 @@ job_name=$base_job_name-"EE"
 out_file=$dir/$job_name.out
 error_file=$dir/$job_name.err
 
-ss_list=(0.3 0.5 0.7)
+ss_list=(0.5)
 rn_list=(0 1 2)
-random_list=(30 50 90 200 400 4000) 
+tau_list=(0.1 0.3 0.5 0.7 0.9)
+lam_list=(30 50 90 200 400 4000) 
+
+# ss_list=(0.5)
+# rn_list=(0)
+# tau_list=(0.1)
+# lam_list=(30) 
 
 for ss_size in "${ss_list[@]}";
 do
-    for rp in "${random_list[@]}";
+    for tau in "${tau_list[@]}";
     do
-        for rn in "${rn_list[@]}";
+        for lam in "${lam_list[@]}"
         do
-            export ss_size 
-            export rn
-            export rp
-            export base_job_name
-            job_name=$base_job_name-$rn-$ss_size-$rp
-            out_file=$dir/$job_name.out
-            error_file=$dir/$job_name.err
-            
-            export job_name
-            echo $ss_size $rn $rp------------------------------------------------------------------
-            sbatch -J $job_name -o $out_file -e $error_file $job_file
+            for rn in "${rn_list[@]}";
+            do
+                export ss_size 
+                export rn
+                export tau
+                export lam
+                export base_job_name
+                job_name=$base_job_name-$rn-$ss_size-$tau-$lam
+                out_file=$dir/$job_name.out
+                error_file=$dir/$job_name.err
+                
+                export job_name
+                echo $ss_size $rn $tau $lam------------------------------------------------------------------
+                sbatch -J $job_name -o $out_file -e $error_file $job_file
+            done
         done
     done
 done
