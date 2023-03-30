@@ -121,7 +121,7 @@ def main(subset_size=.1, greedy=0):
     args = parser.parse_args()
     # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     os.environ["CUDA_VISIBLE_DEVICES"] = '1'
-    CUDA_VISIBLE_DEVICES = 0
+    CUDA_VISIBLE_DEVICES = 1
 
     RUN = args.run
     USE_LOSS = args.use_loss
