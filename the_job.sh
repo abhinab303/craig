@@ -3,9 +3,9 @@
 
 #SBATCH --job-name=EDL_RES_1
 #SBATCH --time 00-6:00:00
-#SBATCH --account cisc-896 --partition tier3
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
+#SBATCH --account cisc-896 --partition debug
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=16
 #SBATCH --mem=8g
 #SBATCH --gres=gpu:1
 
