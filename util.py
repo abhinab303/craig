@@ -136,7 +136,7 @@ def similarity(X, metric):
     '''
     # print(f'Computing similarity for {metric}...', flush=True)
     start = time.time()
-    dists = sklearn.metrics.pairwise_distances(X, metric=metric, n_jobs=1)
+    dists = sklearn.metrics.pairwise_distances(X, metric=metric, n_jobs=8)
     # dists = gdist(X, X, optimize_level=0, output='cpu')
     elapsed = time.time() - start
 
