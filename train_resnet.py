@@ -337,6 +337,8 @@ def main(subset_size=.1, greedy=0):
         before_tra_ss_loss_list = []
         after_tra_ss_prec1_list = []
         after_tra_ss_loss_list = []
+        ss_el2n_list = []
+        ss_loss_list = []
 
         el2n_list = []
 
@@ -490,7 +492,7 @@ def main(subset_size=.1, greedy=0):
                 print(f'{not_selected[run, epoch]:.3f} % not selected yet')
                 #############################
 
-            # gp, gt, gl = get_gradients(indexed_loader, model, train_criterion)
+            gp, gt, gl = get_gradients(indexed_loader, model, train_criterion)
             #
             # g_full = np.load("./result_com_full_model/cifar10_all_data_0.npz")
             # last_epoch_g_full = g_full["all_gradient"][0]
@@ -558,6 +560,10 @@ def main(subset_size=.1, greedy=0):
             # check the accuracy of the selected subset before training:
 
             before_tra_ss_prec1, before_tra_ss_loss = validate(train_loader, model, val_criterion)
+
+            el2n = np.linalg.norm(preds, axis=1)
+            ss_el2n_list.append(el2n)
+            ss_loss_list.append(gl)
 
             data_time[run, epoch], train_time[run, epoch] = train(
                 train_loader, model, train_criterion, optimizer, epoch, weight,
@@ -642,14 +648,15 @@ def main(subset_size=.1, greedy=0):
                     f'Saving the results to {folder}_{args.ig}_moment_{args.momentum}_{args.arch}_{subset_size}'
                     f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}_rp{RANDOM}_el{EL2N}')
 
-                np.savez(f'{folder}'
-                         f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}_rp{RANDOM}_el{EL2N}',
+                np.savez(f'{folder}_drop_check',
+                        #  f'_{grd}_{args.lr_schedule}_start_{args.start_subset}_lag_{args.lag}_b256_{RUN}_{USE_LOSS}_rp{RANDOM}_el{EL2N}',
                          train_loss=train_loss, test_acc=test_acc, train_acc=train_acc, test_loss=test_loss,
                          data_time=data_time, train_time=train_time, grd_time=grd_time, sim_time=sim_time,
                          best_g=best_gs, best_b=best_bs, not_selected=not_selected,
                          times_selected=times_selected, subset=selected_subset_list, weight=selected_weight_list,
                          before_tra_ss_prec1_list=before_tra_ss_prec1_list, before_tra_ss_loss_list=before_tra_ss_loss_list,
-                         after_tra_ss_prec1_list=after_tra_ss_prec1_list, after_tra_ss_loss_list=after_tra_ss_loss_list)
+                         after_tra_ss_prec1_list=after_tra_ss_prec1_list, after_tra_ss_loss_list=after_tra_ss_loss_list,
+                         ss_el2n_list=ss_el2n_list,ss_loss_list=ss_loss_list)
 
             # train_loss_list.append(tl)
             # test_loss_list.append(loss)

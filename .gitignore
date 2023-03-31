@@ -4,3 +4,4 @@ __pycache__/
 tmp/
 visualization/
 rc_out/
+.ipynb_checkpoints/
