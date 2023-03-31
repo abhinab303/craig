@@ -529,23 +529,23 @@ def get_orders_and_weights(B, X, metric, smtk, no=0, stoch_greedy=0, y=None, wei
     # greedy_time_all = np.zeros([C, num_per_class], dtype=np.int64)
     # similarity_time_all = np.zeros([C, num_per_class], dtype=np.int64)
 
-    multi_classes = []
-    for c in classes:
-        multi_classes.append([c, X, y, metric, num_per_class, smtk, stoch_greedy, weights])
+    # multi_classes = []
+    # for c in classes:
+    #     multi_classes.append([c, X, y, metric, num_per_class, smtk, stoch_greedy, weights])
 
-    pool = ThreadPool(C)
-    order_mg_all, cluster_sizes_all, greedy_times, similarity_times = zip(*pool.map(
-        # lambda c: faciliy_location_order(c, X, y, metric, num_per_class[c], smtk, no, stoch_greedy, weights, X, use_loss), classes))
-        child_process, multi_classes))
-    pool.terminate()
+    # pool = ThreadPool(C)
+    # order_mg_all, cluster_sizes_all, greedy_times, similarity_times = zip(*pool.map(
+    #     # lambda c: faciliy_location_order(c, X, y, metric, num_per_class[c], smtk, no, stoch_greedy, weights, X, use_loss), classes))
+    #     child_process, multi_classes))
+    # pool.terminate()
 
     # with concurrent.futures.ProcessPoolExecutor() as executor:
     #     for c in multi_classes:
     #         child_process(c)
 
 
-    # order_mg_all, cluster_sizes_all, greedy_times, similarity_times = zip(*map(
-    #     lambda c: faciliy_location_order(c, X, y, metric, num_per_class[c], smtk, no, stoch_greedy, weights, X, use_loss), classes))
+    order_mg_all, cluster_sizes_all, greedy_times, similarity_times = zip(*map(
+        lambda c: faciliy_location_order(c, X, y, metric, num_per_class[c], smtk, no, stoch_greedy, weights, X, use_loss), classes))
 
     print("from all class: ", len(order_mg_all))
     # pdb.set_trace()

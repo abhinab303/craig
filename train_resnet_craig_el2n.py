@@ -120,8 +120,8 @@ def main(subset_size=.1, greedy=0):
     global args, best_prec1
     args = parser.parse_args()
     # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
-    os.environ["CUDA_VISIBLE_DEVICES"] = '1'
-    CUDA_VISIBLE_DEVICES = 1
+    os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+    CUDA_VISIBLE_DEVICES = 0
 
     RUN = args.run
     USE_LOSS = args.use_loss
